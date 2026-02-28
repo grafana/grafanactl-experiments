@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/grafanactl/internal/linter"
 	"github.com/grafana/grafanactl/internal/resources"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -26,6 +27,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 		convertResourcesErrors, // Resources-related
 		convertNetworkErrors,   // Network-related errors
 		convertAPIErrors,       // API-related errors
+		convertLinterErrors,    // Linter-related errors
 	}
 
 	for _, converter := range errorConverters {
@@ -183,6 +185,14 @@ func convertFSErrors(err error) (*DetailedError, bool) {
 				"Review the permissions on the file",
 			},
 		}, true
+	}
+
+	return nil, false
+}
+
+func convertLinterErrors(err error) (*DetailedError, bool) {
+	if errors.Is(err, linter.ErrTestsFailed) {
+		return nil, true
 	}
 
 	return nil, false

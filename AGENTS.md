@@ -831,3 +831,71 @@ When writing Go code, always organize code symbols in a given file in this order
 9. unexported methods
 10. unexported interface definitions
 11. unexported functions
+
+## Issue Tracking (Beads)
+
+This project uses [beads (`bd`)](https://github.com/steveyegge/beads) for issue tracking. Issues are stored as JSONL files under `.beads/` and synced to the remote via a dedicated `beads-sync` branch (not `main`).
+
+### Setup
+
+Beads is already initialized. New contributors should run:
+
+```bash
+bd doctor          # verify everything is healthy
+bd hooks install   # install git hooks
+```
+
+If `sync-branch` is not configured on a new clone:
+
+```bash
+bd migrate sync beads-sync
+```
+
+### Daily workflow
+
+```bash
+bd ready                                              # find unblocked work
+bd show grafanactl-experiments-<id>                   # review issue details
+bd update grafanactl-experiments-<id> --status=in_progress  # claim it
+# ... do the work ...
+bd close grafanactl-experiments-<id>                  # mark done
+bd sync                                               # push to remote
+```
+
+### Issue prefix
+
+Issues are named `grafanactl-experiments-<hash>` (e.g., `grafanactl-experiments-a3f2dd`).
+
+### Sync branch
+
+Issues sync to the `beads-sync` orphan branch — **not** `main`. This keeps `main`'s commit history clean. The daemon handles auto-commit and auto-push when running:
+
+```bash
+bd daemon start --auto-commit --auto-push
+```
+
+## Landing the Plane (Session Completion)
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd sync
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds

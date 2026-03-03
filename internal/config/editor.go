@@ -101,6 +101,10 @@ func updateValue(input reflect.Value, path []string, value string, unset bool) e
 
 		mapEntryDoesNotExist := currMapValue.Kind() == reflect.Invalid
 		if mapEntryDoesNotExist {
+			if unset {
+				// Nothing to unset; don't create an empty entry as a side effect.
+				return nil
+			}
 			elemType := actualInput.Type().Elem()
 			switch elemType.Kind() {
 			case reflect.Ptr:
@@ -111,6 +115,19 @@ func updateValue(input reflect.Value, path []string, value string, unset bool) e
 				currMapValue = reflect.New(elemType).Elem()
 			}
 			actualInput.SetMapIndex(mapKey, currMapValue)
+		}
+
+		// Guard: a map entry may exist but hold a nil map (e.g. `providers.slo: null`
+		// in YAML). SetMapIndex on a nil map panics, so handle this explicitly.
+		if currMapValue.Kind() == reflect.Map && currMapValue.IsNil() {
+			if unset {
+				// Nothing to unset inside a nil map; leave the entry as-is.
+				return nil
+			}
+			// Initialize a new map, reattach it to the parent, then proceed.
+			newMap := reflect.MakeMap(currMapValue.Type())
+			actualInput.SetMapIndex(mapKey, newMap)
+			currMapValue = newMap
 		}
 
 		// For nested maps, operate on the value and then re-set the map index

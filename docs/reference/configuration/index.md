@@ -68,6 +68,14 @@ contexts:
           - string
           - ...
           
+    # Providers holds per-provider configuration, indexed by provider name.
+    # Each provider has a map of string key-value pairs.
+    # Secret fields are selectively redacted by providers.RedactSecrets using
+    # each provider's ConfigKey metadata.
+    providers: 
+      ${string}:
+        ${string}:
+          string
 # CurrentContext is the name of the context currently in use.
 current-context: string
 ```

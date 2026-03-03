@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/grafana"
+	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources/discovery"
 	"github.com/grafana/grafanactl/internal/secrets"
 	"github.com/spf13/cobra"
@@ -231,6 +232,13 @@ func viewCmd(configOpts *Options) *cobra.Command {
 			if !opts.Raw {
 				if err := secrets.Redact(&cfg); err != nil {
 					return fmt.Errorf("could not redact secrets from configuration: %w", err)
+				}
+
+				registered := providers.All()
+				for _, ctx := range cfg.Contexts {
+					if ctx.Providers != nil {
+						providers.RedactSecrets(ctx.Providers, registered)
+					}
 				}
 			}
 

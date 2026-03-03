@@ -56,6 +56,8 @@ type Context struct {
 
 	// Providers holds per-provider configuration, indexed by provider name.
 	// Each provider has a map of string key-value pairs.
+	// Secret fields are selectively redacted by providers.RedactSecrets using
+	// each provider's ConfigKey metadata.
 	Providers map[string]map[string]string `json:"providers,omitempty" yaml:"providers,omitempty"`
 }
 

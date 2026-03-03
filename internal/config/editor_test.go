@@ -132,6 +132,29 @@ func Test_SetValue(t *testing.T) {
 			},
 		},
 		{
+			name: "provider key with null provider map",
+			input: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": nil,
+						},
+					},
+				},
+			},
+			path:  "contexts.default.providers.slo.token",
+			value: "my-token",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "my-token"},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "provider key creates new provider alongside existing",
 			input: config.Config{
 				Contexts: map[string]*config.Context{
@@ -287,6 +310,50 @@ func Test_UnsetValue(t *testing.T) {
 					"default": {
 						Providers: map[string]map[string]string{
 							"oncall": {"token": "oncall-token"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "unset provider key with null provider map is no-op",
+			input: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": nil,
+						},
+					},
+				},
+			},
+			path: "contexts.default.providers.slo.token",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "unset non-existent nested provider key is no-op",
+			input: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "slo-token"},
+						},
+					},
+				},
+			},
+			path: "contexts.default.providers.oncall.token",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "slo-token"},
 						},
 					},
 				},

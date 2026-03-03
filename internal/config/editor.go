@@ -20,7 +20,7 @@ func UnsetValue[V any](input *V, path string) error {
 	return updateValue(reflect.ValueOf(input), pathParts, "", true)
 }
 
-//nolint:gocyclo
+//nolint:gocyclo,maintidx
 func updateValue(input reflect.Value, path []string, value string, unset bool) error {
 	// Just don't want to deal with pointers later.
 	actualInput := input

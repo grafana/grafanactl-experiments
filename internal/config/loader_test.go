@@ -153,6 +153,49 @@ this-field-is-invalid: []`
 	req.ErrorContains(err, "unknown field \"this-field-is-invalid\"")
 }
 
+func TestLoad_withProviders(t *testing.T) {
+	req := require.New(t)
+
+	configYAML := `contexts:
+  default:
+    grafana:
+      server: http://localhost:3000/
+      token: local_token
+    providers:
+      slo:
+        token: slo-token
+        url: https://slo.example.com
+      oncall:
+        token: oncall-token
+current-context: default
+`
+	configFile := testutils.CreateTempFile(t, configYAML)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(configFile))
+	req.NoError(err)
+
+	req.Equal("default", cfg.CurrentContext)
+	req.Len(cfg.Contexts, 1)
+	req.NotNil(cfg.Contexts["default"].Providers)
+	req.Equal("slo-token", cfg.Contexts["default"].Providers["slo"]["token"])
+	req.Equal("https://slo.example.com", cfg.Contexts["default"].Providers["slo"]["url"])
+	req.Equal("oncall-token", cfg.Contexts["default"].Providers["oncall"]["token"])
+
+	// Round-trip: write and reload
+	tmpDir := t.TempDir()
+	roundTripFile := filepath.Join(tmpDir, "config-roundtrip.yaml")
+	err = config.Write(t.Context(), config.ExplicitConfigFile(roundTripFile), cfg)
+	req.NoError(err)
+
+	cfg2, err := config.Load(t.Context(), config.ExplicitConfigFile(roundTripFile))
+	req.NoError(err)
+
+	// Compare relevant fields (Source will differ)
+	req.Equal(cfg.CurrentContext, cfg2.CurrentContext)
+	req.Equal(cfg.Contexts["default"].Providers, cfg2.Contexts["default"].Providers)
+	req.Equal(cfg.Contexts["default"].Grafana.Server, cfg2.Contexts["default"].Grafana.Server)
+}
+
 func TestWrite(t *testing.T) {
 	req := require.New(t)
 

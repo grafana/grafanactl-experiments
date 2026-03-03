@@ -59,6 +59,12 @@ type Context struct {
 
 	// DefaultLokiDatasource is the UID of the default Loki datasource to use for queries.
 	DefaultLokiDatasource string `json:"default-loki-datasource,omitempty" yaml:"default-loki-datasource,omitempty"`
+
+	// Providers holds per-provider configuration, indexed by provider name.
+	// Each provider has a map of string key-value pairs.
+	// Secret fields are selectively redacted by providers.RedactSecrets using
+	// each provider's ConfigKey metadata.
+	Providers map[string]map[string]string `json:"providers,omitempty" yaml:"providers,omitempty"`
 }
 
 func (context *Context) Validate() error {

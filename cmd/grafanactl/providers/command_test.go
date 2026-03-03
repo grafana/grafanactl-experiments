@@ -15,11 +15,11 @@ type mockProvider struct {
 	shortDesc string
 }
 
-func (m *mockProvider) Name() string                       { return m.name }
-func (m *mockProvider) ShortDesc() string                  { return m.shortDesc }
-func (m *mockProvider) Commands() []*cobra.Command         { return nil }
-func (m *mockProvider) Validate(_ map[string]string) error { return nil }
-func (m *mockProvider) ConfigKeys() []string               { return nil }
+func (m *mockProvider) Name() string                          { return m.name }
+func (m *mockProvider) ShortDesc() string                     { return m.shortDesc }
+func (m *mockProvider) Commands() []*cobra.Command            { return nil }
+func (m *mockProvider) Validate(_ map[string]string) error    { return nil }
+func (m *mockProvider) ConfigKeys() []coreproviders.ConfigKey { return nil }
 
 var _ coreproviders.Provider = (*mockProvider)(nil)
 

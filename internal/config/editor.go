@@ -20,7 +20,7 @@ func UnsetValue[V any](input *V, path string) error {
 	return updateValue(reflect.ValueOf(input), pathParts, "", true)
 }
 
-//nolint:gocyclo
+//nolint:gocyclo,maintidx
 func updateValue(input reflect.Value, path []string, value string, unset bool) error {
 	// Just don't want to deal with pointers later.
 	actualInput := input
@@ -88,13 +88,59 @@ func updateValue(input reflect.Value, path []string, value string, unset bool) e
 			return nil
 		}
 
+		// Handle leaf string values in maps directly via SetMapIndex,
+		// since map values obtained via MapIndex are not addressable.
+		if len(path) == 0 && actualInput.Type().Elem().Kind() == reflect.String {
+			if unset {
+				actualInput.SetMapIndex(mapKey, reflect.Value{})
+				return nil
+			}
+			actualInput.SetMapIndex(mapKey, reflect.ValueOf(value))
+			return nil
+		}
+
 		mapEntryDoesNotExist := currMapValue.Kind() == reflect.Invalid
 		if mapEntryDoesNotExist {
-			currMapValue = reflect.New(actualInput.Type().Elem().Elem()).Elem().Addr()
+			if unset {
+				// Nothing to unset; don't create an empty entry as a side effect.
+				return nil
+			}
+			elemType := actualInput.Type().Elem()
+			switch elemType.Kind() {
+			case reflect.Ptr:
+				currMapValue = reflect.New(elemType.Elem()).Elem().Addr()
+			case reflect.Map:
+				currMapValue = reflect.MakeMap(elemType)
+			default:
+				currMapValue = reflect.New(elemType).Elem()
+			}
 			actualInput.SetMapIndex(mapKey, currMapValue)
 		}
 
-		return updateValue(currMapValue, path, value, unset)
+		// Guard: a map entry may exist but hold a nil map (e.g. `providers.slo: null`
+		// in YAML). SetMapIndex on a nil map panics, so handle this explicitly.
+		if currMapValue.Kind() == reflect.Map && currMapValue.IsNil() {
+			if unset {
+				// Nothing to unset inside a nil map; leave the entry as-is.
+				return nil
+			}
+			// Initialize a new map, reattach it to the parent, then proceed.
+			newMap := reflect.MakeMap(currMapValue.Type())
+			actualInput.SetMapIndex(mapKey, newMap)
+			currMapValue = newMap
+		}
+
+		// For nested maps, operate on the value and then re-set the map index
+		// to ensure changes propagate for non-reference value types.
+		err := updateValue(currMapValue, path, value, unset)
+		if err != nil {
+			return err
+		}
+
+		// Re-set map index to propagate changes for value types that are copies.
+		// For maps (reference types), this is a no-op but harmless.
+		actualInput.SetMapIndex(mapKey, currMapValue)
+		return nil
 	case reflect.String:
 		if len(path) != 0 {
 			return fmt.Errorf("more steps after string: %s", strings.Join(path, "."))

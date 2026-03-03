@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"text/tabwriter"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/grafana"
+	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources/discovery"
 	"github.com/grafana/grafanactl/internal/secrets"
 	"github.com/spf13/cobra"
@@ -55,6 +57,38 @@ func (opts *Options) loadConfigTolerant(ctx context.Context, extraOverrides ...c
 
 			if err := env.Parse(curCtx); err != nil {
 				return err
+			}
+
+			// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables
+			// into the current context's Providers map.
+			const providerEnvPrefix = "GRAFANA_PROVIDER_"
+			for _, envVar := range os.Environ() {
+				parts := strings.SplitN(envVar, "=", 2)
+				if len(parts) != 2 {
+					continue
+				}
+
+				key, val := parts[0], parts[1]
+				if !strings.HasPrefix(key, providerEnvPrefix) {
+					continue
+				}
+
+				suffix := key[len(providerEnvPrefix):]
+				nameParts := strings.SplitN(suffix, "_", 2)
+				if len(nameParts) != 2 || nameParts[0] == "" || nameParts[1] == "" {
+					continue
+				}
+
+				providerName := strings.ToLower(nameParts[0])
+				configKey := strings.ToLower(nameParts[1])
+
+				if curCtx.Providers == nil {
+					curCtx.Providers = make(map[string]map[string]string)
+				}
+				if curCtx.Providers[providerName] == nil {
+					curCtx.Providers[providerName] = make(map[string]string)
+				}
+				curCtx.Providers[providerName][configKey] = val
 			}
 
 			return nil
@@ -198,6 +232,13 @@ func viewCmd(configOpts *Options) *cobra.Command {
 			if !opts.Raw {
 				if err := secrets.Redact(&cfg); err != nil {
 					return fmt.Errorf("could not redact secrets from configuration: %w", err)
+				}
+
+				registered := providers.All()
+				for _, ctx := range cfg.Contexts {
+					if ctx.Providers != nil {
+						providers.RedactSecrets(ctx.Providers, registered)
+					}
 				}
 			}
 

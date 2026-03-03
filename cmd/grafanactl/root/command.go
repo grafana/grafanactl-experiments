@@ -9,8 +9,10 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/grafanactl/cmd/grafanactl/config"
+	cmdproviders "github.com/grafana/grafanactl/cmd/grafanactl/providers"
 	"github.com/grafana/grafanactl/cmd/grafanactl/resources"
 	"github.com/grafana/grafanactl/internal/logs"
+	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 )
@@ -59,6 +61,12 @@ func Command(version string) *cobra.Command {
 
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(resources.Command())
+
+	pp := providers.All()
+	rootCmd.AddCommand(cmdproviders.Command(pp))
+	for _, p := range pp {
+		rootCmd.AddCommand(p.Commands()...)
+	}
 
 	rootCmd.PersistentFlags().BoolVar(&noColors, "no-color", noColors, "Disable color output")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")

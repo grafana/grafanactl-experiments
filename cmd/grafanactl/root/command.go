@@ -17,7 +17,16 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// Command builds the root cobra command for the given version using the
+// compile-time registered provider list.
 func Command(version string) *cobra.Command {
+	return newCommand(version, providers.All())
+}
+
+// newCommand builds the root cobra command with an explicit provider list.
+// Callers that need to inject providers (e.g. tests) should use this directly.
+// Nil entries in pp are silently skipped.
+func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	noColors := false
 	verbosity := 0
 
@@ -62,9 +71,11 @@ func Command(version string) *cobra.Command {
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(resources.Command())
 
-	pp := providers.All()
 	rootCmd.AddCommand(cmdproviders.Command(pp))
 	for _, p := range pp {
+		if p == nil {
+			continue
+		}
 		rootCmd.AddCommand(p.Commands()...)
 	}
 

@@ -36,6 +36,20 @@ func Test_ProvidersCommand_NoProviders(t *testing.T) {
 	testCase.Run(t)
 }
 
+func Test_ProvidersCommand_NilProvider(t *testing.T) {
+	// A nil entry in the provider slice must not cause a panic and must be
+	// silently skipped; the command should still succeed.
+	testCase := testutils.CommandTestCase{
+		Cmd:     providers.Command([]coreproviders.Provider{nil}),
+		Command: []string{},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}
+
+	testCase.Run(t)
+}
+
 func Test_ProvidersCommand(t *testing.T) {
 	tests := []struct {
 		name             string

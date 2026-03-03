@@ -24,6 +24,9 @@ func Command(pp []coreproviders.Provider) *cobra.Command {
 
 			fmt.Fprintf(tab, "NAME\tDESCRIPTION\n")
 			for _, p := range pp {
+				if p == nil {
+					continue
+				}
 				fmt.Fprintf(tab, "%s\t%s\n", p.Name(), p.ShortDesc())
 			}
 

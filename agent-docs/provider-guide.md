@@ -15,7 +15,7 @@ When to create a provider:
 - You want those config keys to integrate with `grafanactl config set` and
   `GRAFANA_PROVIDER_*` environment variables automatically
 
-Architecture reference: [patterns.md#provider-plugin-system](patterns.md) (Pattern 11),
+Architecture reference: [patterns.md – Provider Plugin System](patterns.md#11-provider-plugin-system-high-confidence-93) (Pattern 11),
 [config-system.md](config-system.md) (Provider config section).
 
 ---
@@ -127,18 +127,29 @@ as a constructor argument and call `configOpts.LoadConfig(cmd.Context())` inside
 ```go
 import cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
 
+// Commands returns a "slo" command group with subcommands underneath it.
+// Config flags are bound once on the parent's PersistentFlags so every
+// subcommand inherits them automatically.
 func (p *SLOProvider) Commands() []*cobra.Command {
     configOpts := &cmdconfig.Options{}
-    cmds := []*cobra.Command{
-        newListCommand(configOpts),
+
+    sloCmd := &cobra.Command{
+        Use:   "slo",
+        Short: p.ShortDesc(),
     }
-    configOpts.BindFlags(cmds[0].PersistentFlags())
-    return cmds
+
+    // Bind once on the parent — all subcommands inherit these flags.
+    configOpts.BindFlags(sloCmd.PersistentFlags())
+
+    sloCmd.AddCommand(newListCommand(configOpts))
+    // sloCmd.AddCommand(newGetCommand(configOpts))  // add more subcommands here
+
+    return []*cobra.Command{sloCmd}
 }
 
 func newListCommand(configOpts *cmdconfig.Options) *cobra.Command {
     return &cobra.Command{
-        Use:   "slo list",
+        Use:   "list",
         Short: "List SLO definitions.",
         RunE: func(cmd *cobra.Command, _ []string) error {
             cfg, err := configOpts.LoadConfig(cmd.Context())
@@ -236,15 +247,17 @@ Any config key can be set via environment variable using the pattern:
 GRAFANA_PROVIDER_{PROVIDER_NAME}_{CONFIG_KEY}=value
 ```
 
-Provider names and keys are lowercased automatically. The suffix after
-`GRAFANA_PROVIDER_` is split on the **first underscore only** — everything
-before it becomes the provider name, everything after becomes the config key:
+Provider names and keys are lowercased automatically, and underscores in the
+config key portion are converted to dashes (matching the kebab-case YAML
+convention). The suffix after `GRAFANA_PROVIDER_` is split on the **first
+underscore only** — everything before it becomes the provider name, everything
+after becomes the config key (with `_` → `-` normalization):
 
 ```bash
 # GRAFANA_PROVIDER_SLO_TOKEN    → provider=slo, key=token
-# GRAFANA_PROVIDER_SLO_API_KEY  → provider=slo, key=api_key
+# GRAFANA_PROVIDER_SLO_ORG_ID   → provider=slo, key=org-id
 export GRAFANA_PROVIDER_SLO_TOKEN=glsa_abc123
-export GRAFANA_PROVIDER_SLO_URL=https://slo.example.com
+export GRAFANA_PROVIDER_SLO_ORG_ID=42
 ```
 
 Env vars take precedence over YAML config values.

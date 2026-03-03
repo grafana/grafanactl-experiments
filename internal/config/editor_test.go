@@ -93,6 +93,68 @@ func Test_SetValue(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:  "provider key in new context",
+			input: config.Config{},
+			path:  "contexts.default.providers.slo.token",
+			value: "my-token",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "my-token"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "provider key with existing provider",
+			input: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "old-token"},
+						},
+					},
+				},
+			},
+			path:  "contexts.default.providers.slo.url",
+			value: "https://slo.example.com",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "old-token", "url": "https://slo.example.com"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "provider key creates new provider alongside existing",
+			input: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "slo-token"},
+						},
+					},
+				},
+			},
+			path:  "contexts.default.providers.oncall.token",
+			value: "oncall-token",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo":    {"token": "slo-token"},
+							"oncall": {"token": "oncall-token"},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -181,6 +243,51 @@ func Test_UnsetValue(t *testing.T) {
 				Contexts: map[string]*config.Context{
 					"existing": {
 						Grafana: &config.GrafanaConfig{TLS: &config.TLS{Insecure: false}},
+					},
+				},
+			},
+		},
+		{
+			name: "unset provider key",
+			input: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "slo-token", "url": "https://slo.example.com"},
+						},
+					},
+				},
+			},
+			path: "contexts.default.providers.slo.url",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo": {"token": "slo-token"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "unset entire provider",
+			input: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"slo":    {"token": "slo-token"},
+							"oncall": {"token": "oncall-token"},
+						},
+					},
+				},
+			},
+			path: "contexts.default.providers.slo",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"default": {
+						Providers: map[string]map[string]string{
+							"oncall": {"token": "oncall-token"},
+						},
 					},
 				},
 			},

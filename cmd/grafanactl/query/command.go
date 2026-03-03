@@ -27,6 +27,7 @@ type queryOpts struct {
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.RegisterCustomCodec("table", &queryTableCodec{})
+	opts.IO.RegisterCustomCodec("graph", &queryGraphCodec{})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 

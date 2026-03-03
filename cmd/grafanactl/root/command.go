@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/grafanactl/cmd/grafanactl/config"
 	"github.com/grafana/grafanactl/cmd/grafanactl/datasources"
-	"github.com/grafana/grafanactl/cmd/grafanactl/graph"
 	"github.com/grafana/grafanactl/cmd/grafanactl/query"
 	"github.com/grafana/grafanactl/cmd/grafanactl/resources"
 	"github.com/grafana/grafanactl/internal/logs"
@@ -62,7 +61,6 @@ func Command(version string) *cobra.Command {
 
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(datasources.Command())
-	rootCmd.AddCommand(graph.Command())
 	rootCmd.AddCommand(query.Command())
 	rootCmd.AddCommand(resources.Command())
 

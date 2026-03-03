@@ -213,6 +213,12 @@ grafanactl resources delete dashboards
 
 ## Resource Selectors
 
+
+grafanactl resources push -p ./dashboards
+```
+
+## Resource Selectors
+
 Grafana CLI uses kubectl-style selectors to target resources:
 
 ```bash

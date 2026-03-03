@@ -154,6 +154,55 @@ func TestGrafanaConfig_Validate_BootdataUnavailableAndSuppliedStackId(t *testing
 	req.NoError(cfg.Validate("ctx"))
 }
 
+func TestContext_WithProviders(t *testing.T) {
+	testCases := []struct {
+		name     string
+		ctx      config.Context
+		expected map[string]map[string]string
+	}{
+		{
+			name: "single provider with single key",
+			ctx: config.Context{
+				Name: "test",
+				Providers: map[string]map[string]string{
+					"slo": {"token": "slo-token"},
+				},
+			},
+			expected: map[string]map[string]string{
+				"slo": {"token": "slo-token"},
+			},
+		},
+		{
+			name: "multiple providers with multiple keys",
+			ctx: config.Context{
+				Name: "test",
+				Providers: map[string]map[string]string{
+					"slo":    {"token": "slo-token", "url": "https://slo.example.com"},
+					"oncall": {"token": "oncall-token"},
+				},
+			},
+			expected: map[string]map[string]string{
+				"slo":    {"token": "slo-token", "url": "https://slo.example.com"},
+				"oncall": {"token": "oncall-token"},
+			},
+		},
+		{
+			name: "nil providers",
+			ctx: config.Context{
+				Name: "test",
+			},
+			expected: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := require.New(t)
+			req.Equal(tc.expected, tc.ctx.Providers)
+		})
+	}
+}
+
 func TestMinify(t *testing.T) {
 	req := require.New(t)
 

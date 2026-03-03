@@ -1,8 +1,9 @@
-package root
+package root_test
 
 import (
 	"testing"
 
+	"github.com/grafana/grafanactl/cmd/grafanactl/root"
 	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -24,8 +25,8 @@ func (m *mockProvider) ConfigKeys() []string               { return nil }
 var _ providers.Provider = (*mockProvider)(nil)
 
 // findSubcommand returns the direct child of root whose Use equals name, or nil.
-func findSubcommand(root *cobra.Command, name string) *cobra.Command {
-	for _, sub := range root.Commands() {
+func findSubcommand(cmd *cobra.Command, name string) *cobra.Command {
+	for _, sub := range cmd.Commands() {
 		if sub.Use == name {
 			return sub
 		}
@@ -36,8 +37,8 @@ func findSubcommand(root *cobra.Command, name string) *cobra.Command {
 func TestNewCommand_ProvidersSubcommandAlwaysRegistered(t *testing.T) {
 	// The "providers" meta-command must be present regardless of the provider list.
 	for _, pp := range [][]providers.Provider{nil, {}} {
-		root := newCommand("v0.0.0-test", pp)
-		require.NotNil(t, findSubcommand(root, "providers"), "expected 'providers' subcommand to be registered")
+		rootCmd := root.NewCommandForTest("v0.0.0-test", pp)
+		require.NotNil(t, findSubcommand(rootCmd, "providers"), "expected 'providers' subcommand to be registered")
 	}
 }
 
@@ -47,17 +48,17 @@ func TestNewCommand_ProviderCommandsRegistered(t *testing.T) {
 		&mockProvider{name: "slo", commands: []*cobra.Command{sub}},
 	}
 
-	root := newCommand("v0.0.0-test", pp)
+	rootCmd := root.NewCommandForTest("v0.0.0-test", pp)
 
-	assert.NotNil(t, findSubcommand(root, "slo"), "expected provider subcommand 'slo' to be registered")
+	assert.NotNil(t, findSubcommand(rootCmd, "slo"), "expected provider subcommand 'slo' to be registered")
 }
 
 func TestNewCommand_NilProviderSkipped(t *testing.T) {
 	// A nil entry in the provider slice must not panic and must be ignored.
 	require.NotPanics(t, func() {
-		root := newCommand("v0.0.0-test", []providers.Provider{nil})
+		rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{nil})
 		// The nil entry contributes no subcommands.
-		assert.Nil(t, findSubcommand(root, ""), "nil provider must not register any command")
+		assert.Nil(t, findSubcommand(rootCmd, ""), "nil provider must not register any command")
 	})
 }
 
@@ -69,8 +70,8 @@ func TestNewCommand_MultipleProviders(t *testing.T) {
 		&mockProvider{name: "oncall", commands: []*cobra.Command{oncallCmd}},
 	}
 
-	root := newCommand("v0.0.0-test", pp)
+	rootCmd := root.NewCommandForTest("v0.0.0-test", pp)
 
-	assert.NotNil(t, findSubcommand(root, "slo"), "expected 'slo' subcommand")
-	assert.NotNil(t, findSubcommand(root, "oncall"), "expected 'oncall' subcommand")
+	assert.NotNil(t, findSubcommand(rootCmd, "slo"), "expected 'slo' subcommand")
+	assert.NotNil(t, findSubcommand(rootCmd, "oncall"), "expected 'oncall' subcommand")
 }

@@ -32,6 +32,12 @@ grafanactl resources delete [RESOURCE_SELECTOR]... [flags]
 	# Delete every dashboard defined in the given directory
 	grafanactl resources delete -p ./unwanted-resources/ dashboard
 
+	# Delete all dashboards with auto-approval
+	grafanactl resources delete dashboards --yes
+
+	# Delete all dashboards using environment variable
+	GRAFANACTL_AUTO_APPROVE=1 grafanactl resources delete dashboards
+
 ```
 
 ### Options
@@ -46,6 +52,7 @@ grafanactl resources delete [RESOURCE_SELECTOR]... [flags]
                                fail   — continue processing all resources and exit 1 if any failed (default)
                                abort  — stop on the first error and exit 1 (default "fail")
   -p, --path strings         Path on disk containing the resources to delete
+  -y, --yes                  Auto-approve destructive operations (automatically enables --force)
 ```
 
 ### Options inherited from parent commands

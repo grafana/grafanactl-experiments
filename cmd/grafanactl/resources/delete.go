@@ -123,7 +123,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			// Load resources by selectors only
 			if len(opts.Path) == 0 {
-				fetchRes, err := fetchResources(ctx, fetchRequest{
+				fetchRes, err := FetchResources(ctx, FetchRequest{
 					Config:      cfg,
 					StopOnError: opts.OnError.StopOnError(),
 				}, args)

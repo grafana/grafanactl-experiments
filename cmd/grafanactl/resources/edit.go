@@ -78,7 +78,7 @@ The edition will be cancelled if no changes are written to the file or if the fi
 			}
 
 			// Fetch the resource
-			res, err := fetchResources(ctx, fetchRequest{
+			res, err := FetchResources(ctx, FetchRequest{
 				Config:             cfg,
 				StopOnError:        true,
 				ExpectSingleTarget: true,

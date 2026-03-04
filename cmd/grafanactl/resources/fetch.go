@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/grafanactl/internal/resources/remote"
 )
 
-type fetchRequest struct {
+type FetchRequest struct {
 	Config             config.NamespacedRESTConfig
 	StopOnError        bool
 	ExcludeManaged     bool
@@ -18,13 +18,13 @@ type fetchRequest struct {
 	Processors         []remote.Processor
 }
 
-type fetchResponse struct {
+type FetchResponse struct {
 	Resources      resources.Resources
 	IsSingleTarget bool
 	PullSummary    *remote.OperationSummary
 }
 
-func fetchResources(ctx context.Context, opts fetchRequest, args []string) (*fetchResponse, error) {
+func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*FetchResponse, error) {
 	sels, err := resources.ParseSelectors(args)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func fetchResources(ctx context.Context, opts fetchRequest, args []string) (*fet
 		return nil, err
 	}
 
-	res := fetchResponse{
+	res := FetchResponse{
 		IsSingleTarget: sels.IsSingleTarget(),
 	}
 

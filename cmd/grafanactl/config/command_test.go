@@ -305,6 +305,123 @@ func Test_ViewCommand_withEnvVar(t *testing.T) {
 	testCase.Run(t)
 }
 
+func Test_ViewCommand_redactsProviderSecrets(t *testing.T) {
+	cfg := `contexts:
+  default:
+    grafana:
+      server: https://grafana.example.com/
+      token: grafana-token
+    providers:
+      slo:
+        token: slo-secret-token
+current-context: default`
+
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile, "--minify"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`    providers:
+      slo:
+        token: "**REDACTED**"`),
+		},
+	}
+
+	testCase.Run(t)
+}
+
+func Test_ViewCommand_rawShowsProviderSecrets(t *testing.T) {
+	cfg := `contexts:
+  default:
+    grafana:
+      server: https://grafana.example.com/
+      token: grafana-token
+    providers:
+      slo:
+        token: slo-secret-token
+current-context: default`
+
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile, "--minify", "--raw"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`    providers:
+      slo:
+        token: slo-secret-token`),
+		},
+	}
+
+	testCase.Run(t)
+}
+
+func Test_ViewCommand_withProviderEnvVar(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, "contexts:")
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile, "--minify", "--raw"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`    providers:
+      slo:
+        token: my-secret-token`),
+		},
+		Env: map[string]string{
+			"GRAFANA_SERVER":             "https://grafana.example.com/",
+			"GRAFANA_PROVIDER_SLO_TOKEN": "my-secret-token",
+		},
+	}
+
+	testCase.Run(t)
+}
+
+func Test_ViewCommand_withProviderEnvVar_underscoreToDash(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, "contexts:")
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile, "--minify", "--raw"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`    providers:
+      slo:
+        org-id: "42"`),
+		},
+		Env: map[string]string{
+			"GRAFANA_SERVER":              "https://grafana.example.com/",
+			"GRAFANA_PROVIDER_SLO_ORG_ID": "42",
+		},
+	}
+
+	testCase.Run(t)
+}
+
+func Test_ViewCommand_withProviderEnvVar_redacted(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, "contexts:")
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile, "--minify"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`    providers:
+      slo:
+        token: "**REDACTED**"`),
+		},
+		Env: map[string]string{
+			"GRAFANA_SERVER":             "https://grafana.example.com/",
+			"GRAFANA_PROVIDER_SLO_TOKEN": "my-secret-token",
+		},
+	}
+
+	testCase.Run(t)
+}
+
 func Test_ViewCommand_withEnvironmentVariablesAndEmptyConfig(t *testing.T) {
 	configFile := testutils.CreateTempFile(t, "contexts:")
 

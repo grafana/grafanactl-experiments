@@ -15,14 +15,14 @@ type mockProvider struct {
 	shortDesc  string
 	commands   []*cobra.Command
 	validateFn func(cfg map[string]string) error
-	configKeys []string
+	configKeys []providers.ConfigKey
 }
 
 func (m *mockProvider) Name() string                         { return m.name }
 func (m *mockProvider) ShortDesc() string                    { return m.shortDesc }
 func (m *mockProvider) Commands() []*cobra.Command           { return m.commands }
 func (m *mockProvider) Validate(cfg map[string]string) error { return m.validateFn(cfg) }
-func (m *mockProvider) ConfigKeys() []string                 { return m.configKeys }
+func (m *mockProvider) ConfigKeys() []providers.ConfigKey    { return m.configKeys }
 
 func TestAll(t *testing.T) {
 	tests := []struct {
@@ -48,7 +48,7 @@ func TestMockProviderSatisfiesInterface(t *testing.T) {
 		provider providers.Provider
 		wantName string
 		wantDesc string
-		wantKeys []string
+		wantKeys []providers.ConfigKey
 	}{
 		{
 			name: "mock provider returns expected values",
@@ -59,11 +59,17 @@ func TestMockProviderSatisfiesInterface(t *testing.T) {
 				validateFn: func(_ map[string]string) error {
 					return nil
 				},
-				configKeys: []string{"token", "url"},
+				configKeys: []providers.ConfigKey{
+					{Name: "token", Secret: true},
+					{Name: "url", Secret: false},
+				},
 			},
 			wantName: "test-provider",
 			wantDesc: "A test provider.",
-			wantKeys: []string{"token", "url"},
+			wantKeys: []providers.ConfigKey{
+				{Name: "token", Secret: true},
+				{Name: "url", Secret: false},
+			},
 		},
 	}
 

@@ -26,9 +26,17 @@ func redactSecrets(curr reflect.Value, redact bool) error {
 
 	switch actualCurrValue.Kind() {
 	case reflect.Map:
-		for _, v := range actualCurrValue.MapKeys() {
-			err := redactSecrets(actualCurrValue.MapIndex(v), false)
-			if err != nil {
+		for _, k := range actualCurrValue.MapKeys() {
+			v := actualCurrValue.MapIndex(k)
+			// Map values obtained via MapIndex are not addressable.
+			// For string values, redact in-place via SetMapIndex rather than SetString.
+			if v.Kind() == reflect.String {
+				if redact && !v.IsZero() {
+					actualCurrValue.SetMapIndex(k, reflect.ValueOf(redacted))
+				}
+				continue
+			}
+			if err := redactSecrets(v, redact); err != nil {
 				return err
 			}
 		}

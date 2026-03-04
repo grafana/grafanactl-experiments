@@ -1,6 +1,6 @@
 # Agent Documentation Index
 
-> Generated: 2026-03-02 | Strategy: Standard | Confidence: 92%
+> Generated: 2026-03-03 | Strategy: Standard | Confidence: 92%
 >
 > This directory contains high-level architecture documentation for autonomous coding agents.
 > Start here, then navigate to specific docs as needed.
@@ -17,6 +17,8 @@
 | [config-system.md](config-system.md) | Configuration, contexts, env vars | Adding config fields, auth changes |
 | [data-flows.md](data-flows.md) | Push/Pull/Serve pipelines | Modifying resource sync operations |
 | [project-structure.md](project-structure.md) | Build system, CI/CD, dependencies | Build issues, adding dependencies, release process |
+| [provider-guide.md](provider-guide.md) | Step-by-step guide for implementing a new provider | Adding a new Grafana product provider |
+| [design-guide.md](design-guide.md) | UX requirements for commands and providers | Before implementing new features, reviewing CLI UX decisions |
 
 ## Architecture at a Glance
 
@@ -25,6 +27,8 @@
 The architecture follows a clean layered monolith with strict separation: CLI wiring (`cmd/`) holds no business logic; all domain logic lives in `internal/` organized by feature (config, resources, server). Resources are represented as `unstructured.Unstructured` objects (map-based, no pre-generated Go types), which enables dynamic discovery of resource types and leverages the full Kubernetes client ecosystem including pagination, dry-run semantics, and error handling patterns.
 
 A composable processor pipeline transforms resources during push and pull operations, keeping I/O and transformation concerns decoupled. Context-based multi-environment configuration follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances from a single config file with named contexts.
+
+Two extension subsystems complement the core resource management path: the **provider plugin system** (`internal/providers/`) which registers Prometheus/Loki datasource configs with secret redaction, and the **datasource query layer** (`internal/query/`) which provides direct HTTP clients for PromQL/LogQL queries with terminal graph rendering (`internal/graph/`).
 
 ## Key Patterns Quick Reference
 
@@ -37,6 +41,10 @@ A composable processor pipeline transforms resources during push and pull operat
 - **Selector-to-Filter Resolution (95% confidence)**: User input flows through two-stage resolution: CLI argument → Selector (partial, unvalidated) → Discovery Registry → Filter (fully resolved, complete GVK). Keeps CLI layer ignorant of API details.
 
 - **Dual-Client Architecture (93% confidence)**: Dynamic client path uses `/apis` (K8s-compatible) with `k8s.io/client-go` for resource CRUD; OpenAPI client uses `/api` (Grafana REST) for health checks and version discovery.
+
+- **Provider Plugin System**: Interface + registry pattern for datasource providers (Prometheus, Loki). Each provider exposes typed config, a config key for lookup, and integrates with the secret redactor for safe display in `config view`.
+
+- **Direct HTTP Client for Datasource APIs**: Query clients (`internal/query/prometheus`, `internal/query/loki`) bypass the k8s dynamic client and call datasource HTTP APIs directly, enabling PromQL/LogQL execution with results rendered as terminal charts via `internal/graph/`.
 
 ## How to Use These Docs
 
@@ -119,4 +127,4 @@ Directory layout rationale, build system (Makefile), CI/CD (GitHub Actions via .
 
 ---
 
-*Last updated: 2026-03-02 | Validation: All files present and verified*
+*Last updated: 2026-03-03 | Validation: All files present and verified*

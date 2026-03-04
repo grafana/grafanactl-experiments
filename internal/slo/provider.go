@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/slo/definitions"
+	"github.com/grafana/grafanactl/internal/slo/reports"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -38,6 +39,7 @@ func (p *SLOProvider) Commands() []*cobra.Command {
 	loader.bindFlags(sloCmd.PersistentFlags())
 
 	sloCmd.AddCommand(definitions.Commands(loader))
+	sloCmd.AddCommand(reports.Commands(loader))
 
 	return []*cobra.Command{sloCmd}
 }

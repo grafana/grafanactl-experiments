@@ -97,7 +97,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			res, err := fetchResources(ctx, fetchRequest{
+			res, err := FetchResources(ctx, FetchRequest{
 				Config:      cfg,
 				StopOnError: opts.OnError.StopOnError(),
 			}, args)

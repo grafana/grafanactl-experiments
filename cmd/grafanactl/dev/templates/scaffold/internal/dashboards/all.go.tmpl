@@ -1,0 +1,11 @@
+package dashboards
+
+import (
+	"github.com/grafana/grafana-foundation-sdk/go/resource"
+)
+
+func All() []*resource.ManifestBuilder {
+	return []*resource.ManifestBuilder{
+		sample(),
+	}
+}

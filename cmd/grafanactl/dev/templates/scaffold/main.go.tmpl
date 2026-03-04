@@ -1,0 +1,52 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/foo/bar/internal/dashboards"
+)
+
+const manifestsDirectory = "./resources"
+
+func main() {
+	resourceManifests := dashboards.All()
+
+	for _, builder := range resourceManifests {
+		manifest, err := builder.Build()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not build manifest: %s\n", err)
+			os.Exit(1)
+		}
+
+		manifestJson, err := json.MarshalIndent(manifest, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not marshall manifest %s/%s.%s to json: %s\n", manifest.ApiVersion, manifest.Kind, manifest.Metadata.Name, err)
+			os.Exit(1)
+		}
+
+		manifestFile := filepath.Join(manifestsDirectory, manifest.Kind, manifest.Metadata.Name) + ".json"
+
+		if err := ensureDirectory(filepath.Dir(manifestFile)); err != nil {
+			fmt.Fprintf(os.Stderr, "could not check manifest directory for manifest %s/%s.%s: %s\n", manifest.ApiVersion, manifest.Kind, manifest.Metadata.Name, err)
+			os.Exit(1)
+		}
+
+		if err := os.WriteFile(manifestFile, manifestJson, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "could not write manifest %s/%s.%s to file: %s\n", manifest.ApiVersion, manifest.Kind, manifest.Metadata.Name, err)
+			os.Exit(1)
+		}
+	}
+
+	fmt.Println("Manifests written.")
+}
+
+func ensureDirectory(dir string) error {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return os.MkdirAll(dir, 0744)
+	}
+
+	return nil
+}

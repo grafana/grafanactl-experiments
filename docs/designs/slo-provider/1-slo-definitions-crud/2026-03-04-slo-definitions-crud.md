@@ -8,6 +8,33 @@ Foundation stage — all subsequent work depends on this. Establishes the SLO pr
 
 ~1,300 LOC estimated.
 
+## Prior Art: Terraform Provider
+
+The [terraform-provider-grafana](https://github.com/grafana/terraform-provider-grafana) SLO resource
+(`internal/resources/slo/`) uses an OpenAPI-generated client from
+[`github.com/grafana/slo-openapi-client/go/slo`](https://github.com/grafana/slo-openapi-client).
+
+**Decision: hand-roll the HTTP client** rather than import the generated client.
+
+Rationale:
+- grafanactl's established pattern is `rest.HTTPClientFor()` + direct HTTP calls
+  (see `internal/query/prometheus/client.go`). Consistency matters.
+- Generated types use `SloV00Slo`, `*string` optional fields, getter/setter methods —
+  poor fit for our `encoding/json` round-trip adapter.
+- The SLO API surface is small (4 endpoints). A hand-rolled client is ~200 LOC.
+- The generated client would still be useful as a **type reference** during implementation.
+
+Key details extracted from the Terraform provider and OpenAPI spec:
+- **Plugin proxy base path**: `/api/plugins/grafana-slo-app/resources`
+- **API endpoints** (appended to base path):
+  - `GET    /v1/slo`        → list all SLOs
+  - `POST   /v1/slo`        → create SLO
+  - `GET    /v1/slo/{uuid}` → get single SLO
+  - `PUT    /v1/slo/{uuid}` → update SLO
+  - `DELETE /v1/slo/{uuid}` → delete SLO
+- **Auth**: `Authorization: Bearer <service-account-token>` header (same token as Grafana API)
+- **Reports API** (for Stage 2) uses the same base path: `/v1/report`, `/v1/report/{id}`
+
 ## New Files
 
 ### `internal/providers/slo/definitions/`
@@ -15,7 +42,7 @@ Foundation stage — all subsequent work depends on this. Establishes the SLO pr
 | File | Purpose | LOC |
 |------|---------|-----|
 | `types.go` | Go types: `Slo`, `Query` (6 types incl. failureRatio + grafanaQueries), `Objective`, `Label`, `Alerting`, `ReadOnly`, response wrappers | ~120 |
-| `client.go` | HTTP client: List, Get, Create, Update, Delete against plugin API | ~200 |
+| `client.go` | HTTP client: List, Get, Create, Update, Delete via `/api/plugins/grafana-slo-app/resources/v1/slo`. Uses `rest.HTTPClientFor()` pattern from `internal/query/prometheus/client.go` | ~200 |
 | `client_test.go` | Unit tests with `httptest.Server` | ~200 |
 | `adapter.go` | `ToResource`/`FromResource` K8s envelope translation | ~150 |
 | `adapter_test.go` | Round-trip property tests | ~150 |
@@ -224,7 +251,7 @@ spec:
 Create-or-update flow for `definitions push`:
 
 1. Read YAML files, `FromResource()` to get `Slo` structs
-2. For each SLO: `GET /v1/slo/{uuid}` — if 200 → `PUT` (update), if 404 → `POST` (create)
+2. For each SLO: `GET /api/plugins/grafana-slo-app/resources/v1/slo/{uuid}` — if 200 → `PUT` (update), if 404 → `POST` (create)
 3. POST accepts `uuid` field for vanity identifiers, so the UUID from `metadata.name` is preserved
 4. POST/PUT return 202 Accepted (async) — report success without polling
 

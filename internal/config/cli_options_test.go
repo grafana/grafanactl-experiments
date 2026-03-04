@@ -1,16 +1,15 @@
-package config
+package config_test
 
 import (
-	"os"
 	"testing"
+
+	"github.com/grafana/grafanactl/internal/config"
 )
 
 func TestLoadCLIOptions_AutoApproveTrue(t *testing.T) {
-	// Set environment variable
-	os.Setenv("GRAFANACTL_AUTO_APPROVE", "1")
-	defer os.Unsetenv("GRAFANACTL_AUTO_APPROVE")
+	t.Setenv("GRAFANACTL_AUTO_APPROVE", "1")
 
-	opts, err := LoadCLIOptions()
+	opts, err := config.LoadCLIOptions()
 	if err != nil {
 		t.Fatalf("LoadCLIOptions() error = %v, want nil", err)
 	}
@@ -21,11 +20,9 @@ func TestLoadCLIOptions_AutoApproveTrue(t *testing.T) {
 }
 
 func TestLoadCLIOptions_AutoApproveTrueString(t *testing.T) {
-	// Set environment variable
-	os.Setenv("GRAFANACTL_AUTO_APPROVE", "true")
-	defer os.Unsetenv("GRAFANACTL_AUTO_APPROVE")
+	t.Setenv("GRAFANACTL_AUTO_APPROVE", "true")
 
-	opts, err := LoadCLIOptions()
+	opts, err := config.LoadCLIOptions()
 	if err != nil {
 		t.Fatalf("LoadCLIOptions() error = %v, want nil", err)
 	}
@@ -36,11 +33,9 @@ func TestLoadCLIOptions_AutoApproveTrueString(t *testing.T) {
 }
 
 func TestLoadCLIOptions_AutoApproveFalse(t *testing.T) {
-	// Set environment variable
-	os.Setenv("GRAFANACTL_AUTO_APPROVE", "0")
-	defer os.Unsetenv("GRAFANACTL_AUTO_APPROVE")
+	t.Setenv("GRAFANACTL_AUTO_APPROVE", "0")
 
-	opts, err := LoadCLIOptions()
+	opts, err := config.LoadCLIOptions()
 	if err != nil {
 		t.Fatalf("LoadCLIOptions() error = %v, want nil", err)
 	}
@@ -51,10 +46,9 @@ func TestLoadCLIOptions_AutoApproveFalse(t *testing.T) {
 }
 
 func TestLoadCLIOptions_AutoApproveEmpty(t *testing.T) {
-	// Ensure environment variable is not set
-	os.Unsetenv("GRAFANACTL_AUTO_APPROVE")
+	t.Setenv("GRAFANACTL_AUTO_APPROVE", "")
 
-	opts, err := LoadCLIOptions()
+	opts, err := config.LoadCLIOptions()
 	if err != nil {
 		t.Fatalf("LoadCLIOptions() error = %v, want nil", err)
 	}

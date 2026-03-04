@@ -557,7 +557,7 @@ Maps sections to the cli-analysis recommendations (R1.1–R3.5):
 | R# | Description | Section | Status |
 |----|-------------|---------|--------|
 | R1.1 | Exit code taxonomy | 2 | `[ADOPT]` |
-| R1.2 | Auto-approve | 3.2, 3.3 | `[PLANNED]` |
+| R1.2 | Auto-approve | 3.2, 3.3 | `[IMPLEMENTED]` (3.2) / `[PLANNED]` (3.3) |
 | R1.3 | Agent mode | 6 | `[PLANNED]` |
 | R2.1 | Help formatting page | 8.3 | `[PLANNED]` |
 | R2.2 | Help environment page | 10, 8.3 | `[CURRENT]` / `[PLANNED]` |

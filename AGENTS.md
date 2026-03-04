@@ -27,6 +27,7 @@
 | [config-system.md](agent-docs/config-system.md) | Contexts, env vars, TLS, namespace resolution | Config or auth changes |
 | [data-flows.md](agent-docs/data-flows.md) | Push/Pull/Serve/Delete pipelines | Modifying resource sync flows |
 | [project-structure.md](agent-docs/project-structure.md) | Build system, CI/CD, dependencies, directory layout | Build issues, adding deps |
+| [provider-discovery-guide.md](agent-docs/provider-discovery-guide.md) | Pre-implementation research and design for new providers | Before designing a new provider (discovery phase) |
 | [provider-guide.md](agent-docs/provider-guide.md) | Step-by-step guide: implement + register a new provider | Adding a new Grafana product provider |
 | [design-guide.md](agent-docs/design-guide.md) | UX requirements: output, exit codes, errors, naming | Before implementing features, reviewing CLI UX |
 | `.claude/skills/update-agent-docs/` | Agent-docs maintenance | After significant code changes |

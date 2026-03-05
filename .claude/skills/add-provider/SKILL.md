@@ -1,6 +1,6 @@
 ---
 name: add-provider
-description: Add a new Grafana product provider to grafanactl. Guides through API discovery, design decisions, implementation, and verification. Use when adding support for a new Grafana Cloud product (SLO, OnCall, Synthetic Monitoring, k6, ML, etc.) or when the user says "add provider", "new provider", or "integrate [product]".
+description: Use when adding a new Grafana Cloud product provider to grafanactl (SLO, OnCall, Synthetic Monitoring, k6, ML, etc.), or when the user says "add provider", "new provider", or "integrate [product]". Also triggers for bead tasks referencing provider implementation.
 ---
 
 # Add Provider
@@ -22,12 +22,12 @@ a provider is the right approach (vs extending the existing resources command).
 The workflow has four phases. Each phase has a gate — don't proceed until the
 gate condition is met.
 
-```
-Phase 1: Discover    → Design doc produced
-Phase 2: Design      → Decision framework answered
-Phase 3: Implement   → Code compiles, tests pass
-Phase 4: Verify      → All checklists green
-```
+| Phase | Gate | Key Actions |
+|-------|------|-------------|
+| 1. Discover | Design doc produced | AskUser for context → API research → test real calls |
+| 2. Design | Decisions answered | Auth, client type, envelope, commands (CRUD + beyond), staging |
+| 3. Implement | Compiles, tests pass | provider.go + init() → types/client/adapter → register → tests |
+| 4. Verify | All checklists green | Interface + UX + build verification |
 
 ### Prerequisites
 
@@ -306,15 +306,11 @@ func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRES
 it handles env vars (`GRAFANA_TOKEN`, `GRAFANA_PROVIDER_*`), context switching,
 and validation. Don't simplify it; the full implementation is required.
 
-### Step 2: Config Keys (`provider-guide.md` Step 2)
+### Steps 2–3: Config Keys + Validate (`provider-guide.md` Steps 2–3)
 
-Declare all keys the provider reads. Secret keys get `Secret: true`.
-SLO uses empty `[]` because it reuses `grafana.token` — most plugin API
-providers can do the same.
-
-### Step 3: Validate (`provider-guide.md` Step 3)
-
-Return actionable errors pointing to `grafanactl config set ...`.
+- **ConfigKeys**: Declare all keys. `Secret: true` for tokens. SLO uses `[]`
+  (reuses `grafana.token`) — most plugin API providers can do the same.
+- **Validate**: Return actionable errors pointing to `grafanactl config set ...`.
 
 ### Step 4: Commands (`provider-guide.md` Step 4)
 
@@ -356,25 +352,16 @@ Use `internal/providers/slo/definitions/` as the reference for all three files.
 
 ### Step 6: Register
 
-Registration uses Go's self-registration pattern (like `database/sql` drivers).
-Two steps:
+Step 1 already added `init()` with `providers.Register()`. The remaining step
+is adding the blank import in `cmd/grafanactl/root/command.go`:
 
-1. **`init()` in provider.go** (already done in Step 1 above):
-```go
-func init() { //nolint:gochecknoinits
-    providers.Register(&{Name}Provider{})
-}
-```
-
-2. **Blank import in `cmd/grafanactl/root/command.go`**:
 ```go
 import (
     _ "github.com/grafana/grafanactl/internal/providers/{name}" // triggers init()
 )
 ```
 
-The blank import triggers the `init()` which calls `providers.Register()`.
-`allProviders()` in the root command just returns `providers.All()`.
+This triggers `init()` → `providers.Register()` → `providers.All()` returns it.
 
 ### Step 7: Tests (`provider-guide.md` Step 7)
 

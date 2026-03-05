@@ -14,9 +14,12 @@ import (
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/graph"
 	"github.com/grafana/grafanactl/internal/query/prometheus"
+	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+const uuidLabel = "grafana_slo_uuid"
 
 // StatusResult holds merged SLO API + metric data for a single SLO.
 type StatusResult struct {
@@ -26,6 +29,7 @@ type StatusResult struct {
 	Window    string   `json:"window"`
 	SLI       *float64 `json:"sli,omitempty"`
 	Budget    *float64 `json:"budget,omitempty"`
+	BurnRate  *float64 `json:"burnRate,omitempty"`
 	SLI1h     *float64 `json:"sli1h,omitempty"`
 	SLI1d     *float64 `json:"sli1d,omitempty"`
 	Status    string   `json:"status"`
@@ -33,9 +37,10 @@ type StatusResult struct {
 
 // MetricData holds the parsed PromQL results for a single SLO UUID.
 type MetricData struct {
-	SLI   *float64
-	SLI1h *float64
-	SLI1d *float64
+	SLI      *float64
+	BurnRate *float64
+	SLI1h    *float64
+	SLI1d    *float64
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +127,7 @@ grafana_slo_* metrics.`,
 				return err
 			}
 
-			wide := opts.IO.OutputFormat == "wide"
-			metrics := fetchMetrics(ctx, promClient, slos, wide)
+			metrics := fetchMetrics(ctx, promClient, slos)
 
 			// Merge SLO data with metrics.
 			results := BuildStatusResults(slos, metrics)
@@ -162,6 +166,7 @@ func BuildStatusResults(slos []Slo, metrics map[string]MetricData) []StatusResul
 		m, hasMetrics := metrics[s.UUID]
 		if hasMetrics {
 			r.SLI = m.SLI
+			r.BurnRate = m.BurnRate
 			r.SLI1h = m.SLI1h
 			r.SLI1d = m.SLI1d
 			if m.SLI != nil && objective > 0 {
@@ -210,7 +215,7 @@ func ComputeBudget(sliVal, objective float64) float64 {
 // fetchMetrics batch-fetches Prometheus metrics for the given SLOs.
 // SLOs are grouped by destination datasource UID to minimize queries.
 // Errors are handled gracefully — failed queries result in NODATA.
-func fetchMetrics(ctx context.Context, client *prometheus.Client, slos []Slo, wide bool) map[string]MetricData {
+func fetchMetrics(ctx context.Context, client *prometheus.Client, slos []Slo) map[string]MetricData {
 	result := make(map[string]MetricData)
 
 	// Group SLOs by destination datasource UID.
@@ -235,32 +240,88 @@ func fetchMetrics(ctx context.Context, client *prometheus.Client, slos []Slo, wi
 		uuidRegex := strings.Join(uuids, "|")
 
 		// Fetch SLI window values.
-		mergeMetric(ctx, client, dsUID, uuidRegex, "grafana_slo_sli_window", result,
-			func(m *MetricData, val *float64) { m.SLI = val })
-
-		if !wide {
-			continue
+		if q, err := BuildMetricQuery("grafana_slo_sli_window", uuidRegex); err == nil {
+			mergeQuery(ctx, client, dsUID, q, result,
+				func(m *MetricData, val *float64) { m.SLI = val })
 		}
 
-		// Fetch wide-only metrics.
-		mergeMetric(ctx, client, dsUID, uuidRegex, "grafana_slo_sli_1h", result,
-			func(m *MetricData, val *float64) { m.SLI1h = val })
-		mergeMetric(ctx, client, dsUID, uuidRegex, "grafana_slo_sli_1d", result,
-			func(m *MetricData, val *float64) { m.SLI1d = val })
+		// Fetch 1h and 1d SLI values.
+		if q, err := BuildMetricQuery("grafana_slo_sli_1h", uuidRegex); err == nil {
+			mergeQuery(ctx, client, dsUID, q, result,
+				func(m *MetricData, val *float64) { m.SLI1h = val })
+		}
+		if q, err := BuildMetricQuery("grafana_slo_sli_1d", uuidRegex); err == nil {
+			mergeQuery(ctx, client, dsUID, q, result,
+				func(m *MetricData, val *float64) { m.SLI1d = val })
+		}
+
+		// Fetch burn rate for ratio-based SLOs (non-ratio SLOs will naturally yield no data).
+		if q, err := BuildBurnRateQuery(uuidRegex); err == nil {
+			mergeQuery(ctx, client, dsUID, q, result,
+				func(m *MetricData, val *float64) { m.BurnRate = val })
+		}
 	}
 
 	return result
 }
 
-// mergeMetric queries a metric and merges its values into the result map.
-func mergeMetric(
+// BuildMetricQuery builds a simple label-filtered PromQL query for a metric.
+func BuildMetricQuery(metricName, uuidRegex string) (string, error) {
+	expr, err := promql.Vector(metricName).
+		LabelMatchRegexp(uuidLabel, uuidRegex).
+		Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// BuildBurnRateQuery builds a PromQL expression for burn rate.
+// Only returns data for ratio-based SLOs that have _rate_5m metrics.
+func BuildBurnRateQuery(uuidRegex string) (string, error) {
+	successRate := promql.Sum(
+		promql.AvgOverTime(
+			promql.Vector("grafana_slo_success_rate_5m").
+				LabelMatchRegexp(uuidLabel, uuidRegex).Range("1h"),
+		),
+	).By([]string{uuidLabel})
+
+	totalRate := promql.Sum(
+		promql.AvgOverTime(
+			promql.Vector("grafana_slo_total_rate_5m").
+				LabelMatchRegexp(uuidLabel, uuidRegex).Range("1h"),
+		),
+	).By([]string{uuidLabel})
+
+	errorRate := promql.Sub(
+		promql.N(1),
+		promql.ClampMax(promql.Div(successRate, totalRate), 1),
+	)
+
+	allowedError := promql.Sub(
+		promql.N(1),
+		promql.Vector("grafana_slo_objective").
+			LabelMatchRegexp(uuidLabel, uuidRegex),
+	)
+
+	burnRate := promql.Div(errorRate, allowedError).
+		On([]string{uuidLabel})
+
+	expr, err := burnRate.Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// mergeQuery executes a raw PromQL query and merges its values into the result map.
+func mergeQuery(
 	ctx context.Context, client *prometheus.Client,
-	dsUID, uuidRegex, metricName string,
+	dsUID, query string,
 	result map[string]MetricData,
 	setter func(m *MetricData, val *float64),
 ) {
-	resp := queryMetric(ctx, client, dsUID,
-		fmt.Sprintf(`%s{grafana_slo_uuid=~"%s"}`, metricName, uuidRegex))
+	resp := queryMetric(ctx, client, dsUID, query)
 	if resp == nil {
 		return
 	}
@@ -343,7 +404,7 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 
 	if c.Wide {
-		fmt.Fprintln(tw, "NAME\tUUID\tOBJECTIVE\tWINDOW\tSLI\tBUDGET\tSLI_1H\tSLI_1D\tSTATUS")
+		fmt.Fprintln(tw, "NAME\tUUID\tOBJECTIVE\tWINDOW\tSLI\tBUDGET\tBURN_RATE\tSLI_1H\tSLI_1D\tSTATUS")
 	} else {
 		fmt.Fprintln(tw, "NAME\tUUID\tOBJECTIVE\tWINDOW\tSLI\tBUDGET\tSTATUS")
 	}
@@ -354,11 +415,12 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 		budgetStr := formatOptionalBudget(r.Budget)
 
 		if c.Wide {
+			burnRateStr := formatOptionalBurnRate(r.BurnRate)
 			sli1h := formatOptionalPercent(r.SLI1h)
 			sli1d := formatOptionalPercent(r.SLI1d)
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				r.Name, r.UUID, objective, r.Window, sliStr, budgetStr,
-				sli1h, sli1d, r.Status)
+				burnRateStr, sli1h, sli1d, r.Status)
 		} else {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				r.Name, r.UUID, objective, r.Window, sliStr, budgetStr, r.Status)
@@ -437,4 +499,11 @@ func formatOptionalBudget(v *float64) string {
 		return "--"
 	}
 	return fmt.Sprintf("%.1f%%", *v*100)
+}
+
+func formatOptionalBurnRate(v *float64) string {
+	if v == nil {
+		return "--"
+	}
+	return fmt.Sprintf("%.2fx", *v)
 }

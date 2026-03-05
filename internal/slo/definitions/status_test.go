@@ -214,6 +214,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 	})
 
 	t.Run("wide table", func(t *testing.T) {
+		burnRate := 1.5
 		wideResults := []definitions.StatusResult{
 			{
 				Name:      "payment-api-latency",
@@ -222,6 +223,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 				Window:    "28d",
 				SLI:       new(0.9972),
 				Budget:    new(0.44),
+				BurnRate:  &burnRate,
 				SLI1h:     new(0.9991),
 				SLI1d:     new(0.9980),
 				Status:    "OK",
@@ -238,11 +240,17 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 		output := buf.String()
 
 		// Verify wide-specific columns.
+		if !strings.Contains(output, "BURN_RATE") {
+			t.Errorf("wide table should have BURN_RATE column:\n%s", output)
+		}
 		if !strings.Contains(output, "SLI_1H") {
 			t.Errorf("wide table should have SLI_1H column:\n%s", output)
 		}
 		if !strings.Contains(output, "SLI_1D") {
 			t.Errorf("wide table should have SLI_1D column:\n%s", output)
+		}
+		if !strings.Contains(output, "1.50x") {
+			t.Errorf("wide table should show burn rate 1.50x:\n%s", output)
 		}
 	})
 }
@@ -267,8 +275,9 @@ func TestBuildStatusResults(t *testing.T) {
 		},
 	}
 
+	burnRate := 2.0
 	metrics := map[string]definitions.MetricData{
-		"uuid-1": {SLI: new(0.9972)},
+		"uuid-1": {SLI: new(0.9972), BurnRate: &burnRate},
 	}
 
 	results := definitions.BuildStatusResults(slos, metrics)
@@ -291,5 +300,11 @@ func TestBuildStatusResults(t *testing.T) {
 	diff := *r.Budget - 0.44
 	if diff < -0.001 || diff > 0.001 {
 		t.Errorf("expected budget ~0.44, got %v", *r.Budget)
+	}
+	if r.BurnRate == nil {
+		t.Fatal("expected burn rate to be populated from metric data")
+	}
+	if *r.BurnRate != 2.0 {
+		t.Errorf("expected burn rate 2.0, got %v", *r.BurnRate)
 	}
 }

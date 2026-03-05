@@ -1,13 +1,37 @@
 ---
 name: grafanactl
-description: Get information about and manage Grafana resources, datasources, and queries from the command line. Use this skill when the user wants to interact with grafana instances.
+description: Manage Grafana resources (dashboards, folders, alerts) from the command line using kubectl-style patterns. Supports GitOps workflows, multi-environment promotion, and dashboards-as-code. Use when the user wants to pull/push/manage Grafana resources, set up contexts, or work with dashboards in version control. For datasource discovery and querying, use the discover-datasources skill instead.
 ---
 
 # grafanactl
 
-Manage Grafana resources, datasources, and queries from the command line using kubectl-style patterns.
+Manage Grafana resources from the command line. This skill focuses on configuration, resource management (dashboards/folders), and GitOps workflows.
 
 # Instructions
+
+## Scope
+
+This skill covers:
+- Configuring Grafana contexts (connection settings, auth)
+- Listing available resource types
+- Pulling resources to local files for version control
+- Pushing resources back to Grafana
+- GitOps workflows and multi-environment promotion
+- Dashboard development with live reload
+
+**Not covered here**: Datasource discovery, querying metrics/logs, exploring telemetry → use the **discover-datasources** skill for that.
+
+## Approach
+
+Explain the workflow and commands clearly. If you can't execute commands directly, provide clear instructions and examples so the user can run them. Focus on helping the user understand the grafanactl patterns and accomplish their goal.
+
+**Command examples:**
+- Assume `grafanactl` is on the user's PATH (use `grafanactl`, not `./bin/grafanactl`)
+- If working in the grafanactl repo itself, note that they may need to use `./bin/grafanactl` or install it first
+
+**When querying metrics/logs:**
+- If the user's query doesn't include labels, suggest useful labels they could add (only suggest labels that actually exist in the datasource)
+- Help them understand how to filter and aggregate their data effectively
 
 ### Step 1: Configure Context
 
@@ -60,23 +84,7 @@ grafanactl resources pull dashboards/my-dashboard-uid
 
 **Expected output:** Resources saved to `./grafana-resources/` directory organized by kind
 
-### Step 4: Query Datasources
-
-**CRITICAL**: Always use datasource **UID**, not name. Get UIDs first:
-
-```bash
-# List datasources to find UIDs
-grafanactl datasources list
-
-# Query using UID from the list
-grafanactl query -d <datasource-uid> -e 'up{job="grafana"}' --start now-1h --end now -o json | grafanactl graph
-```
-
-**Expected output:** ASCII chart showing metric values over time
-
-For more detailed patterns, see `references/query-patterns.md`.
-
-### Step 5: Push or Modify Resources
+### Step 4: Push or Modify Resources
 
 Make changes and push back to Grafana:
 
@@ -108,17 +116,7 @@ grafanactl resources edit dashboards/my-dashboard-uid
 
 **Result:** Dashboards from production are now in staging, with full git history
 
-## Example 2: Query and Visualize Metrics
-
-**User says:** "Show me HTTP request rate for the last 6 hours"
-
-**Actions:**
-1. Find Prometheus datasource UID: `grafanactl datasources list --type prometheus`
-2. Query and graph: `grafanactl query -d <uid> -e 'rate(http_requests_total[5m])' --start now-6h --end now --step 5m -o json | grafanactl graph --title "HTTP Request Rate"`
-
-**Result:** ASCII line chart showing request rate over 6 hours
-
-## Example 3: Dashboard Development with Live Reload
+## Example 2: Dashboard Development with Live Reload
 
 **User says:** "I want to develop dashboards locally with live preview"
 
@@ -130,7 +128,7 @@ grafanactl resources edit dashboards/my-dashboard-uid
 
 **Result:** Local Grafana instance with live reload, no need to push to remote instance
 
-## Example 4: Multi-Environment Promotion
+## Example 3: Multi-Environment Promotion
 
 **User says:** "Promote dashboards from dev to staging to production"
 
@@ -142,26 +140,7 @@ grafanactl resources edit dashboards/my-dashboard-uid
 
 **Result:** Controlled promotion through environments with dry-run validation
 
-## Example 5: Explore Loki Logs
-
-**User says:** "Show log volume for a specific service"
-
-**Actions:**
-1. Find Loki datasource: `grafanactl datasources list --type loki`
-2. List available labels: `grafanactl datasources loki labels -d <loki-uid>`
-3. Query log rate: `grafanactl query -d <loki-uid> -t loki -e 'sum(rate({job="my-service"}[5m]))' --start now-1h --end now --step 1m -o json | grafanactl graph`
-
-**Result:** ASCII chart showing log volume over time
-
 # Troubleshooting
-
-## Error: "datasource UID is required"
-
-**Cause:** You used datasource name instead of UID, or no default is configured
-
-**Solution:**
-1. Get datasource UID: `grafanactl datasources list`
-2. Either use `-d <uid>` flag, or set default: `grafanactl config set contexts.mycontext.default-prometheus-datasource <uid>`
 
 ## Error: "resource not managed by grafanactl"
 
@@ -172,15 +151,6 @@ grafanactl resources edit dashboards/my-dashboard-uid
 - To modify: Add `--include-managed` flag (use with caution - may conflict with other managers)
 ```bash
 grafanactl resources push --include-managed
-```
-
-## Error: "failed to parse JSON" when piping to graph
-
-**Cause:** Query output is not in JSON format
-
-**Solution:** Always use `-o json` flag when piping to graph:
-```bash
-grafanactl query -d <uid> -e 'up' --start now-1h --end now -o json | grafanactl graph
 ```
 
 ## Error: "Connection refused" or "Connection timeout"
@@ -202,16 +172,6 @@ grafanactl query -d <uid> -e 'up' --start now-1h --end now -o json | grafanactl 
 2. For basic auth, verify username/password
 3. Ensure token has required permissions (Editor or Admin for push operations)
 4. Re-configure auth: `grafanactl config set contexts.mycontext.auth.token <new-token>`
-
-## Error: "No data to display" when using graph command
-
-**Cause:** Query returned no results, or wrong time range
-
-**Solution:**
-1. Verify query without graph: `grafanactl query -d <uid> -e 'up' --start now-1h --end now -o json`
-2. Check if time range contains data
-3. For range queries, ensure `--step` is appropriate for the time range
-4. Verify metric exists: `grafanactl datasources prometheus metadata -d <uid> --metric <metric-name>`
 
 ## Error: "Folder not found" when pushing dashboards
 

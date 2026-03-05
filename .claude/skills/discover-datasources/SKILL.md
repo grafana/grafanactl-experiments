@@ -64,33 +64,29 @@ grafanactl datasources loki series -d <datasource-uid> -M '{job="varlogs"}'
 
 **Note:** The `series` command requires at least one `-M` (match) selector using LogQL syntax.
 
-### Step 3: Test Queries (Optional)
+### Step 3: Summarize Discovery and Guide Next Steps
 
-Once you've identified available data, verify with a test query.
+After exploring datasources, provide a **high-level summary** (not exhaustive lists) and ask targeted questions to help the user find what they need.
 
-```bash
-# For Prometheus - instant query
-grafanactl query -d <datasource-uid> -e 'up'
+**Keep summaries concise:**
+- Datasource types and what they contain (metrics vs logs)
+- Key label dimensions available (cluster, namespace, app, job, etc.) with 2-3 example values
+- High-level categories (e.g., "HTTP metrics", "Kubernetes logs", "application metrics")
 
-# For Prometheus - range query
-grafanactl query -d <datasource-uid> -e 'rate(http_requests_total[5m])' --start now-1h --end now
-```
+**Be interactive - ask targeted questions based on what exists:**
+- "I see telemetry from clusters: [cluster-a, cluster-b, cluster-c]. Are you looking for a specific cluster?"
+- "Available apps: [app-1, app-2, app-3]. Are you looking for one of these?"
+- "I found HTTP metrics with labels: code, handler, instance. Would you like example queries for monitoring HTTP traffic?"
 
-**Expected output:** Table showing metric values with labels and timestamps.
+**For metrics**: Focus on metric names, types (counter/gauge/histogram), and available labels. Skip infrastructure details like API endpoints.
 
-### Step 4: Set Default Datasource (Optional)
+**For logs**: Focus on label combinations that identify log streams (job, namespace, cluster, app). Skip formatting details.
 
-To avoid passing `-d <uid>` repeatedly, configure defaults:
+**Only suggest things that actually exist** in their datasources - don't make generic suggestions.
 
-```bash
-# Set default Prometheus datasource
-grafanactl config set contexts.<context-name>.default-prometheus-datasource <uid>
+**Keep formatting simple** - avoid excessive markdown, headers, or visual formatting. Focus on clear, concise text.
 
-# Set default Loki datasource
-grafanactl config set contexts.<context-name>.default-loki-datasource <uid>
-```
-
-After setting defaults, you can omit the `-d` flag in datasource commands.
+The goal is helping users understand what telemetry exists and where to find data for specific systems/apps/contexts.
 
 ## Examples
 
@@ -102,9 +98,20 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 1. List Prometheus datasources: `grafanactl datasources list --type prometheus`
 2. Get datasource UID from output
 3. Search for HTTP metrics: `grafanactl datasources prometheus metadata -d <uid> -o json | jq '.data | to_entries[] | select(.key | contains("http"))'`
-4. Get details on specific metric: `grafanactl datasources prometheus metadata -d <uid> --metric http_requests_total`
+4. List labels for one key metric: `grafanactl datasources prometheus labels -d <uid>`
 
-**Result:** Metric name, type (counter/gauge), and help text showing what the metric measures.
+**Concise summary:**
+"Found 3 HTTP metrics:
+- http_requests_total (counter) - labels: code, handler, job, instance
+- http_request_duration_seconds (histogram) - labels: handler, job
+- http_response_size_bytes (histogram) - labels: handler, job
+
+Available jobs: [grafana, prometheus, node-exporter]"
+
+**Interactive follow-up:**
+"Are you looking for HTTP metrics for a specific service (job)? Or would you like example queries for request rates, error rates, or latency?"
+
+**Result:** User gets actionable summary and targeted next-step questions.
 
 ### Example 2: Discovering which services are logging to Loki
 
@@ -113,25 +120,38 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 **Actions:**
 1. List Loki datasources: `grafanactl datasources list --type loki`
 2. Get datasource UID from output
-3. List label names: `grafanactl datasources loki labels -d <uid>`
-4. Get job values: `grafanactl datasources loki labels -d <uid> --label job`
-5. List streams for a specific job: `grafanactl datasources loki series -d <uid> -M '{job="varlogs"}'`
+3. Get job values: `grafanactl datasources loki labels -d <uid> --label job`
+4. Optionally check other useful labels: `grafanactl datasources loki labels -d <uid> --label namespace`
 
-**Result:** List of job names and their associated log streams.
+**Concise summary:**
+"Found logs from 15 applications across 3 clusters:
+
+Jobs: grafana, loki, mimir, prometheus, node-exporter, app-server, api-gateway, ...
+Clusters: dev-us-east-0, dev-eu-west-2, prod-us-central
+Namespaces: default, monitoring, applications"
+
+**Interactive follow-up:**
+"Are you looking for logs from a specific application? Or a specific cluster/namespace?"
+
+**Result:** User gets overview of what's logging and can drill down based on their needs.
 
 ### Example 3: Troubleshooting missing dashboard data
 
 **User says:** "My dashboard shows no data for service X"
 
 **Actions:**
-1. Verify datasource exists: `grafanactl datasources get <uid>`
-2. Check if service is being monitored:
-   - Prometheus: `grafanactl datasources prometheus targets -d <uid>`
-   - Look for service in scrape targets
-3. Verify labels exist: `grafanactl datasources prometheus labels -d <uid> --label job`
-4. Test simple query: `grafanactl query -d <uid> -e 'up{job="service-x"}'`
+1. Check available jobs: `grafanactl datasources prometheus labels -d <uid> --label job`
+2. Check scrape targets: `grafanactl datasources prometheus targets -d <uid>`
 
-**Result:** Identifies whether datasource is misconfigured, service isn't being scraped, or label selectors are wrong.
+**Concise summary:**
+"Service X is not in the job labels. Available services: [service-a, service-b, service-c]
+
+Scrape targets show 12 active endpoints, none matching 'service-x'."
+
+**Interactive follow-up:**
+"Did you mean one of these services? Or is 'service-x' expected but not being scraped yet?"
+
+**Result:** User quickly understands the service isn't monitored and sees what is available.
 
 ### Example 4: Finding logs for a specific namespace
 
@@ -139,10 +159,19 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 
 **Actions:**
 1. Get Loki datasource UID: `grafanactl datasources list --type loki`
-2. Verify namespace label exists: `grafanactl datasources loki labels -d <uid> --label namespace`
-3. List all streams in namespace: `grafanactl datasources loki series -d <uid> -M '{namespace="production"}'`
+2. Check namespace values: `grafanactl datasources loki labels -d <uid> --label namespace`
+3. Get apps in that namespace: `grafanactl datasources loki labels -d <uid> --label app` (to understand what's there)
 
-**Result:** Table showing all label combinations for log streams in the production namespace.
+**Concise summary:**
+"Found 8 applications logging in 'production' namespace:
+- api-gateway, auth-service, billing, user-service, notification-service, ...
+
+Also available: cluster, pod, container labels for filtering"
+
+**Interactive follow-up:**
+"Would you like to see logs from a specific app in production? Or example queries for aggregating across all production services?"
+
+**Result:** User understands what's logging in production and can narrow down to specific apps.
 
 ## Troubleshooting
 

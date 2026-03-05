@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/graph"
 	"github.com/grafana/grafanactl/internal/query/prometheus"
+	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -208,10 +209,15 @@ func FetchMetricsRange(
 		uuidRegex := strings.Join(uuids, "|")
 
 		// Fetch SLI window values as a range query.
-		q, err := BuildMetricQuery("grafana_slo_sli_window", uuidRegex)
+		// Wrap with avg by (grafana_slo_uuid) to collapse any extra labels on the
+		// recording rules (e.g. version, cluster) into a single series per SLO.
+		expr, err := promql.Avg(
+			promql.Vector("grafana_slo_sli_window").LabelMatchRegexp(uuidLabel, uuidRegex),
+		).By([]string{uuidLabel}).Build()
 		if err != nil {
 			continue
 		}
+		q := expr.String()
 
 		resp := queryRangeMetric(ctx, client, dsUID, q, start, end, step)
 		if resp == nil {

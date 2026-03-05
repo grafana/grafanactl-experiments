@@ -39,6 +39,7 @@ func Commands(loader RESTConfigLoader) *cobra.Command {
 		newPullCommand(loader),
 		newDeleteCommand(loader),
 		newStatusCommand(loader),
+		newTimelineCommand(loader),
 	)
 	return cmd
 }

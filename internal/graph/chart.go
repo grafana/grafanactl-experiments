@@ -241,6 +241,12 @@ func RenderLineChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 	// Convert first series to TimePoints
 	firstPoints := convertToTimePoints(data.Series[0].Points)
 
+	// Resolve color for first series: use explicit Color if set, else ColorForIndex.
+	firstColor := data.Series[0].Color
+	if firstColor == "" {
+		firstColor = ColorForIndex(0)
+	}
+
 	// Create chart options
 	chartOpts := []timeserieslinechart.Option{
 		timeserieslinechart.WithYRange(minY, maxY),
@@ -248,7 +254,7 @@ func RenderLineChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 		timeserieslinechart.WithAxesStyles(axisStyle, labelStyle),
 		timeserieslinechart.WithXLabelFormatter(localTimeFormatter),
 		timeserieslinechart.WithTimeSeries(firstPoints),
-		timeserieslinechart.WithStyle(lipgloss.NewStyle().Foreground(ColorForIndex(0))),
+		timeserieslinechart.WithStyle(lipgloss.NewStyle().Foreground(firstColor)),
 		timeserieslinechart.WithLineStyle(runes.ThinLineStyle),
 	}
 
@@ -258,7 +264,10 @@ func RenderLineChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 	// Add additional series
 	for i := 1; i < len(data.Series); i++ {
 		series := data.Series[i]
-		color := ColorForIndex(i)
+		color := series.Color
+		if color == "" {
+			color = ColorForIndex(i)
+		}
 		dataSetName := fmt.Sprintf("series%d", i)
 
 		points := convertToTimePoints(series.Points)
@@ -367,7 +376,11 @@ func renderLegend(series []Series) string {
 
 	var legendParts []string
 	for i, s := range series {
-		color := ColorForIndex(i)
+		// Use the series-specific Color if set; otherwise fall back to ColorForIndex.
+		color := s.Color
+		if color == "" {
+			color = ColorForIndex(i)
+		}
 		colorBox := lipgloss.NewStyle().Foreground(color).Render("●")
 		name := s.Name
 		if len(name) > 30 {

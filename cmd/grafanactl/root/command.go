@@ -14,6 +14,7 @@ import (
 	cmdproviders "github.com/grafana/grafanactl/cmd/grafanactl/providers"
 	"github.com/grafana/grafanactl/cmd/grafanactl/query"
 	"github.com/grafana/grafanactl/cmd/grafanactl/resources"
+	"github.com/grafana/grafanactl/internal/alert"
 	"github.com/grafana/grafanactl/internal/logs"
 	"github.com/grafana/grafanactl/internal/providers"
 	_ "github.com/grafana/grafanactl/internal/providers/slo" // Provider registrations — blank imports trigger init() self-registration.
@@ -24,7 +25,11 @@ import (
 // allProviders returns all registered providers.
 // Providers self-register via init() in their packages (imported above as blank imports).
 func allProviders() []providers.Provider {
-	return providers.All()
+	return append(
+		providers.All(),
+		&sloprovider.SLOProvider{},
+		&alert.AlertProvider{},
+	)
 }
 
 // Command builds the root cobra command for the given version using the

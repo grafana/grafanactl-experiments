@@ -79,9 +79,14 @@ func RenderPercentageBars(w io.Writer, title string, items []PercentageBarItem, 
 		filled := int(float64(barWidth) * fillRatio)
 		empty := barWidth - filled
 
-		color := ColorForIndex(i)
-		filledStr := lipgloss.NewStyle().Foreground(color).Render(strings.Repeat("█", filled))
+		// Bar color: compliance status (green/yellow/orange/red).
+		barColor := ComplianceColor(item.Value, item.Target)
+		filledStr := lipgloss.NewStyle().Foreground(barColor).Render(strings.Repeat("█", filled))
 		emptyStr := dimStyle.Render(strings.Repeat("░", empty))
+
+		// Label color: series palette to distinguish items.
+		labelColor := ColorForIndex(i)
+		labelStr := lipgloss.NewStyle().Foreground(labelColor).Render(fmt.Sprintf("%-*s", maxLabelWidth, name))
 
 		valueStr := fmt.Sprintf("%.2f%%", item.Value)
 
@@ -90,7 +95,7 @@ func RenderPercentageBars(w io.Writer, title string, items []PercentageBarItem, 
 			targetStr = fmt.Sprintf("  target: %.2f%%", item.Target)
 		}
 
-		sb.WriteString(fmt.Sprintf("  %-*s  %s%s  %s%s\n", maxLabelWidth, name, filledStr, emptyStr, valueStr, targetStr))
+		sb.WriteString(fmt.Sprintf("  %s  %s%s  %s%s\n", labelStr, filledStr, emptyStr, valueStr, targetStr))
 	}
 
 	_, err := fmt.Fprint(w, sb.String())

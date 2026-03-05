@@ -14,6 +14,7 @@ import (
 	cmdproviders "github.com/grafana/grafanactl/cmd/grafanactl/providers"
 	"github.com/grafana/grafanactl/cmd/grafanactl/query"
 	"github.com/grafana/grafanactl/cmd/grafanactl/resources"
+	"github.com/grafana/grafanactl/internal/alert"
 	"github.com/grafana/grafanactl/internal/logs"
 	"github.com/grafana/grafanactl/internal/providers"
 	sloprovider "github.com/grafana/grafanactl/internal/slo"
@@ -28,6 +29,7 @@ func allProviders() []providers.Provider {
 	return append(
 		providers.All(),
 		&sloprovider.SLOProvider{},
+		&alert.AlertProvider{},
 	)
 }
 

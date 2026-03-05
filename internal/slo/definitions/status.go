@@ -127,7 +127,7 @@ grafana_slo_* metrics.`,
 				return err
 			}
 
-			metrics := fetchMetrics(ctx, promClient, slos)
+			metrics := FetchMetrics(ctx, promClient, slos)
 
 			// Merge SLO data with metrics.
 			results := BuildStatusResults(slos, metrics)
@@ -212,10 +212,10 @@ func ComputeBudget(sliVal, objective float64) float64 {
 	return (sliVal - objective) / (1.0 - objective)
 }
 
-// fetchMetrics batch-fetches Prometheus metrics for the given SLOs.
+// FetchMetrics batch-fetches Prometheus metrics for the given SLOs.
 // SLOs are grouped by destination datasource UID to minimize queries.
 // Errors are handled gracefully — failed queries result in NODATA.
-func fetchMetrics(ctx context.Context, client *prometheus.Client, slos []Slo) map[string]MetricData {
+func FetchMetrics(ctx context.Context, client *prometheus.Client, slos []Slo) map[string]MetricData {
 	result := make(map[string]MetricData)
 
 	// Group SLOs by destination datasource UID.

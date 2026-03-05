@@ -110,7 +110,7 @@ grafanactl {provider}           [contributed by Provider.Commands()]
 ### Current providers
 
 ```
-grafanactl slo                  [internal/slo/provider.go]
+grafanactl slo                  [internal/providers/slo/provider.go]
 ├── definitions                 CRUD + status/timeline for SLO definitions
 │   ├── list
 │   ├── get    <uuid>
@@ -131,7 +131,7 @@ grafanactl slo                  [internal/slo/provider.go]
 
 Provider commands cannot import `cmd/grafanactl/config` (import cycle). Instead,
 they use a lightweight `configLoader` that binds `--config` and `--context` flags
-independently. See `internal/slo/provider.go` for the reference implementation.
+independently. See `internal/providers/slo/provider.go` for the reference implementation.
 
 ```go
 type configLoader struct {
@@ -146,7 +146,7 @@ func (l *configLoader) bindFlags(flags *pflag.FlagSet) {
 
 func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
     // Applies env vars (GRAFANA_TOKEN, GRAFANA_PROVIDER_*), context flag,
-    // and validates. See internal/slo/provider.go for the full implementation.
+    // and validates. See internal/providers/slo/provider.go for the full implementation.
 }
 ```
 

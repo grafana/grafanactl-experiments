@@ -160,11 +160,11 @@ Consider adding: `status` (if operational health data exists).
 
 ### Decision 5: Package Layout (Section 2.5)
 
-Actual convention (from SLO reference implementation):
+Convention (from SLO reference implementation):
 
 ```
-internal/{provider}/            ← top-level package, NOT internal/providers/{provider}/
-├── provider.go                 # Provider interface impl + configLoader
+internal/providers/{name}/      ← co-located with interface + registry
+├── provider.go                 # Provider interface impl + init() + configLoader
 ├── provider_test.go            # Contract tests
 ├── {resource}/                 # One subpackage per resource type
 │   ├── types.go
@@ -176,10 +176,11 @@ internal/{provider}/            ← top-level package, NOT internal/providers/{p
 
 Single resource type → flat package. Multiple → subpackage per type.
 
-**Note**: Provider implementations live at `internal/{name}/`, NOT
-`internal/providers/{name}/`. The `internal/providers/` package contains only
-the interface definition and registry — keeping provider implementations
-separate avoids import cycles.
+**Note**: Provider implementations live at `internal/providers/{name}/`,
+co-located with the interface and registry. Circular imports are avoided
+via Go's self-registration pattern: providers call `providers.Register()`
+in `init()`, and `cmd/grafanactl/root/command.go` triggers registration
+via blank imports (`_ "github.com/grafana/grafanactl/internal/providers/slo"`).
 
 ### Decision 6: Implementation Staging (Section 2.6)
 
@@ -220,10 +221,15 @@ Implement one stage at a time. For each stage:
 
 ### Step 1: Provider Interface (`provider-guide.md` Step 1)
 
-Create `internal/{name}/provider.go`. Include the full `configLoader` —
-providers cannot import `cmd/grafanactl/config` (import cycle):
+Create `internal/providers/{name}/provider.go`. Include `init()` self-registration
+and the full `configLoader` — providers cannot import `cmd/grafanactl/config`
+(import cycle):
 
 ```go
+func init() { //nolint:gochecknoinits // Self-registration pattern.
+    providers.Register(&{Name}Provider{})
+}
+
 type {Name}Provider struct{}
 var _ providers.Provider = &{Name}Provider{}
 
@@ -231,7 +237,7 @@ func (p *{Name}Provider) Name() string      { return "{name}" }
 func (p *{Name}Provider) ShortDesc() string { return "Manage Grafana {Product} resources." }
 
 // configLoader avoids importing cmd/grafanactl/config (import cycle).
-// Copy from internal/slo/provider.go and update as needed.
+// Copy from internal/providers/slo/provider.go and update as needed.
 type configLoader struct {
     configFile string
     ctxName    string
@@ -241,7 +247,7 @@ func (l *configLoader) bindFlags(flags *pflag.FlagSet) { ... }
 func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) { ... }
 ```
 
-**Important**: Copy the full `configLoader` from `internal/slo/provider.go` —
+**Important**: Copy the full `configLoader` from `internal/providers/slo/provider.go` —
 it handles env vars (`GRAFANA_TOKEN`, `GRAFANA_PROVIDER_*`), context switching,
 and validation. Don't simplify it; the full implementation is required.
 
@@ -291,27 +297,29 @@ For each resource type, create:
 - `adapter.go` — Translate between API objects and K8s `Unstructured`. Test
   with round-trip property tests
 
-Use `internal/slo/definitions/` as the reference for all three files.
+Use `internal/providers/slo/definitions/` as the reference for all three files.
 
 ### Step 6: Register
 
-**Registration is in `cmd/grafanactl/root/command.go`**, NOT
-`internal/providers/registry.go`. This avoids import cycles between
-`internal/providers` and provider implementations (which import `internal/config`):
+Registration uses Go's self-registration pattern (like `database/sql` drivers).
+Two steps:
 
+1. **`init()` in provider.go** (already done in Step 1 above):
 ```go
-// cmd/grafanactl/root/command.go
-
-import {name}provider "github.com/grafana/grafanactl/internal/{name}"
-
-func allProviders() []providers.Provider {
-    return append(
-        providers.All(),
-        &sloprovider.SLOProvider{},
-        &{name}provider.{Name}Provider{},  // add here
-    )
+func init() { //nolint:gochecknoinits
+    providers.Register(&{Name}Provider{})
 }
 ```
+
+2. **Blank import in `cmd/grafanactl/root/command.go`**:
+```go
+import (
+    _ "github.com/grafana/grafanactl/internal/providers/{name}" // triggers init()
+)
+```
+
+The blank import triggers the `init()` which calls `providers.Register()`.
+`allProviders()` in the root command just returns `providers.All()`.
 
 ### Step 7: Tests (`provider-guide.md` Step 7)
 
@@ -375,13 +383,14 @@ Key files:
 
 | Component | Path |
 |-----------|------|
-| Provider struct + configLoader | `internal/slo/provider.go` |
-| Definitions commands | `internal/slo/definitions/commands.go` |
-| API client | `internal/slo/definitions/client.go` |
-| K8s adapter | `internal/slo/definitions/adapter.go` |
-| Status (Prometheus hybrid) | `internal/slo/definitions/status.go` |
-| Timeline (range query + graph) | `internal/slo/definitions/timeline.go` |
-| Registration | `cmd/grafanactl/root/command.go` (`allProviders()`) |
+| Provider struct + configLoader | `internal/providers/slo/provider.go` |
+| Definitions commands | `internal/providers/slo/definitions/commands.go` |
+| API client | `internal/providers/slo/definitions/client.go` |
+| K8s adapter | `internal/providers/slo/definitions/adapter.go` |
+| Status (Prometheus hybrid) | `internal/providers/slo/definitions/status.go` |
+| Timeline (range query + graph) | `internal/providers/slo/definitions/timeline.go` |
+| Self-registration | `internal/providers/slo/provider.go` (`init()`) |
+| Blank import trigger | `cmd/grafanactl/root/command.go` |
 | Top-level plan | `docs/designs/slo-provider/2026-03-04-slo-provider-plan.md` |
 | Stage 1 design | `docs/designs/slo-provider/1-slo-definitions-crud/` |
 | Stage 2 design | `docs/designs/slo-provider/2-reports-crud/` |
@@ -406,6 +415,6 @@ Key files:
 | K8s CRDs not externally accessible | Always verify with real API call before choosing K8s client path |
 | readOnly fields in POST/PUT | Adapter must strip server-generated fields on Create/Update |
 | Different list response envelopes | Define response types per product (no universal wrapper) |
-| configLoader is non-trivial | Copy full implementation from `internal/slo/provider.go`, don't simplify |
-| Registration in wrong place | Use `cmd/grafanactl/root/command.go`, not `internal/providers/registry.go` |
-| Package path confusion | Provider code lives in `internal/{name}/`, not `internal/providers/{name}/` |
+| configLoader is non-trivial | Copy full implementation from `internal/providers/slo/provider.go`, don't simplify |
+| Missing blank import | Add `_ "github.com/grafana/grafanactl/internal/providers/{name}"` in `cmd/grafanactl/root/command.go` |
+| Lint failures for init()/global | Add `//nolint:gochecknoinits` and `//nolint:gochecknoglobals` directives |

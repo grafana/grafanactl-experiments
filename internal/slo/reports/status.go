@@ -333,33 +333,29 @@ func (c *ReportStatusGraphCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for report status graph codec: expected []ReportStatusResult")
 	}
 
-	points := make([]definitions.SLOMetricPoint, 0, len(results))
+	items := make([]graph.PercentageBarItem, 0, len(results))
 	for _, r := range results {
 		if r.CombinedSLI == nil {
 			continue
 		}
-		objective := 0.0
+		target := 0.0
 		if r.CombinedBudget != nil {
-			// Derive objective from combined values (approximate).
-			objective = computeAverageObjectiveFromSLOs(r.SLOs)
+			target = computeAverageObjectiveFromSLOs(r.SLOs) * 100
 		}
-		points = append(points, definitions.SLOMetricPoint{
-			UUID:      r.UUID,
-			Name:      r.Name,
-			Value:     *r.CombinedSLI,
-			Objective: objective,
+		items = append(items, graph.PercentageBarItem{
+			Name:   r.Name,
+			Value:  *r.CombinedSLI * 100,
+			Target: target,
 		})
 	}
 
-	if len(points) == 0 {
+	if len(items) == 0 {
 		fmt.Fprintln(w, "No metric data available for graph rendering.")
 		return nil
 	}
 
-	chartData := definitions.FromSLOComplianceSummary(points)
-	chartData.Title = "SLO Report Compliance Summary"
 	opts := graph.DefaultChartOptions()
-	return graph.RenderChart(w, chartData, opts)
+	return graph.RenderPercentageBars(w, "SLO Report Compliance Summary", items, opts)
 }
 
 func (c *ReportStatusGraphCodec) Decode(_ io.Reader, _ any) error {

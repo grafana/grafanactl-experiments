@@ -21,6 +21,13 @@ type Point struct {
 	Value float64
 }
 
+// PercentageBarItem represents a single item in a percentage bar chart.
+type PercentageBarItem struct {
+	Name   string  // Label shown to the left of the bar
+	Value  float64 // Current value as percentage (0–100)
+	Target float64 // Target/objective as percentage (0–100); 0 means no target
+}
+
 // IsInstantQuery returns true if all series have exactly one data point
 // at the same timestamp (typical of Prometheus instant/vector queries).
 func (d *ChartData) IsInstantQuery() bool {

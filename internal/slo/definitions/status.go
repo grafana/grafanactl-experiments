@@ -451,28 +451,25 @@ func (c *statusGraphCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for status graph codec: expected []StatusResult")
 	}
 
-	// Build SLO compliance summary bar chart from instant data.
-	points := make([]SLOMetricPoint, 0, len(results))
+	items := make([]graph.PercentageBarItem, 0, len(results))
 	for _, r := range results {
 		if r.SLI == nil {
 			continue
 		}
-		points = append(points, SLOMetricPoint{
-			UUID:      r.UUID,
-			Name:      r.Name,
-			Value:     *r.SLI,
-			Objective: r.Objective,
+		items = append(items, graph.PercentageBarItem{
+			Name:   r.Name,
+			Value:  *r.SLI * 100,
+			Target: r.Objective * 100,
 		})
 	}
 
-	if len(points) == 0 {
+	if len(items) == 0 {
 		fmt.Fprintln(w, "No metric data available for graph rendering.")
 		return nil
 	}
 
-	chartData := FromSLOComplianceSummary(points)
 	opts := graph.DefaultChartOptions()
-	return graph.RenderChart(w, chartData, opts)
+	return graph.RenderPercentageBars(w, "SLO Compliance Summary", items, opts)
 }
 
 func (c *statusGraphCodec) Decode(_ io.Reader, _ any) error {

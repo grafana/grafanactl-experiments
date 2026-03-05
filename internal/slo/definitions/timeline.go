@@ -447,53 +447,46 @@ type TimelineGraphCodec struct{}
 // Format returns the codec format identifier.
 func (c *TimelineGraphCodec) Format() format.Format { return "graph" }
 
-// Encode writes the SLI trend as a line chart.
+// Encode writes the SLI trend as one line chart per SLO.
 func (c *TimelineGraphCodec) Encode(w io.Writer, v any) error {
 	payload, ok := v.(SLITrendPayload)
 	if !ok {
 		return fmt.Errorf("timelineGraphCodec: expected SLITrendPayload, got %T", v)
 	}
 
-	chartData := FromSLOSLITrend(payload.Points)
-	if len(chartData.Series) == 0 {
+	if len(payload.Points) == 0 {
 		fmt.Fprintln(w, "No time-series data available.")
 		return nil
 	}
 
-	// Build lookup maps for last-point objective and value, keyed by UUID.
-	lastObjective := make(map[string]float64, len(payload.Points))
-	lastValue := make(map[string]float64, len(payload.Points))
-	for uuid, pts := range payload.Points {
-		if len(pts) > 0 {
-			last := pts[len(pts)-1]
-			lastObjective[uuid] = last.Objective
-			lastValue[uuid] = last.Value
-		}
-	}
+	opts := graph.DefaultChartOptions()
 
-	// Map SLO name → UUID so we can look up by series name.
-	nameToUUID := make(map[string]string, len(payload.SLOs))
 	for _, slo := range payload.SLOs {
-		nameToUUID[slo.Name] = slo.UUID
-	}
-
-	// Assign compliance colors based on the last point's SLI vs objective.
-	for i, s := range chartData.Series {
-		uuid, ok := nameToUUID[s.Name]
-		if !ok {
+		pts, ok := payload.Points[slo.UUID]
+		if !ok || len(pts) == 0 {
 			continue
 		}
-		obj, hasObj := lastObjective[uuid]
-		val, hasVal := lastValue[uuid]
-		if hasObj && hasVal && obj > 0 {
-			// Values in the chart are already multiplied by 100 (percentage).
-			// ComplianceColor expects percentage values (0–100).
-			chartData.Series[i].Color = graph.ComplianceColor(val*100, obj*100)
+
+		chartData := FromSLOSLITrend(map[string][]SLOTimeSeriesPoint{slo.UUID: pts})
+		if len(chartData.Series) == 0 {
+			continue
 		}
+
+		// Color the line by current compliance status (last point).
+		last := pts[len(pts)-1]
+		if last.Objective > 0 {
+			// last.Value is a ratio (0–1); ComplianceColor expects percentages (0–100).
+			chartData.Series[0].Color = graph.ComplianceColor(last.Value*100, last.Objective*100)
+		}
+
+		chartData.Title = slo.Name
+		if err := graph.RenderLineChart(w, chartData, opts); err != nil {
+			return err
+		}
+		fmt.Fprintln(w)
 	}
 
-	opts := graph.DefaultChartOptions()
-	return graph.RenderLineChart(w, chartData, opts)
+	return nil
 }
 
 // Decode is not supported for the timeline graph codec.

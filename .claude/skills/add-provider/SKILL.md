@@ -42,9 +42,29 @@ Before starting, confirm with the user:
 
 > **Guide**: `agent-docs/provider-discovery-guide.md` — follow Sections 1.1–1.6
 
-Research the product's API surface. Work through these steps in order:
+### Step 0: Gather User Context
+
+Before autonomous research, ask the user what they already know. Use
+AskUserQuestion with these questions (adjust based on what's already known):
+
+1. **Source code access** — "Do you have access to the product's source code
+   repository? If so, which repo (e.g., `grafana/{product}`)?"
+2. **API documentation** — "Can you point me to any API docs or OpenAPI specs?
+   (GitHub repo, Grafana docs URL, or 'I don't know')"
+3. **Terraform resources** — "Does the Grafana Terraform provider already
+   support this product? Any specific resource names you know of?"
+4. **Go SDK** — "Is there an existing Go client library for this product's API?
+   (e.g., `grafana/{product}-api-go-client`)"
+5. **Known quirks** — "Anything unusual about this product's API that I should
+   know? (e.g., non-standard auth, async operations, unusual pagination)"
+
+Use the answers to focus research — skip steps where the user has already
+provided definitive information, and prioritize areas where they're uncertain.
 
 ### Step 1: Map the API Surface (Section 1.1)
+
+Research the product's API surface. Use user-provided pointers from Step 0 first,
+then fill gaps autonomously.
 
 Search for the product's OpenAPI spec:
 ```bash
@@ -145,7 +165,8 @@ spec:
 
 ### Decision 4: Command Surface (Section 2.4)
 
-Standard set (always include):
+#### 4a. Standard CRUD (always include)
+
 ```
 grafanactl {provider}
 ├── {resource-group}
@@ -156,7 +177,41 @@ grafanactl {provider}
 │   └── delete <id...>
 ```
 
-Consider adding: `status` (if operational health data exists).
+#### 4b. Beyond CRUD — Product-Specific Commands
+
+Using findings from Phase 1 (discovered APIs, official docs, source code),
+brainstorm what product-specific commands could add value beyond basic CRUD.
+
+Think about:
+- **Operational health** — does the product expose status, health, or state
+  data? (e.g., SLO's `status` command queries Prometheus for live SLI/budget)
+- **Time-series trends** — can you show how something changed over time?
+  (e.g., SLO's `timeline` renders error budget burn-down graphs)
+- **State history** — does the product track state transitions?
+  (e.g., alerting rule evaluation history, incident timeline)
+- **Performance data** — are there metrics about execution or efficiency?
+  (e.g., k6 load test results, synthetic monitoring check latency)
+- **Relationships / graph** — can you visualize how resources connect?
+  (e.g., SLO report → SLO definitions mapping)
+- **Validation / dry-run** — can the API validate without applying?
+  (e.g., rule validation, check preview)
+
+**Reference**: SLO provider's beyond-CRUD commands:
+- `status` — hybrid pattern: REST API for resource data + Prometheus instant
+  queries for live metrics (SLI percentage, error budget remaining)
+- `timeline` — Prometheus range queries + terminal graph rendering (burn-down
+  chart over time window)
+- `reports status` — aggregates status across multiple SLOs with combined metrics
+
+Present your brainstormed list to the user via AskUserQuestion:
+- Show each proposed command with a one-line description
+- Include "None — CRUD only for now" as an option
+- Ask which commands are valuable for the first implementation
+- Commands the user defers can go into later stages (Decision 6)
+
+**Important**: The brainstorming should be grounded in what the discovery phase
+actually found — real API endpoints, real data available. Don't propose commands
+that would require APIs that don't exist.
 
 ### Decision 5: Package Layout (Section 2.5)
 

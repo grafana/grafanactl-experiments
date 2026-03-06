@@ -14,7 +14,7 @@ created: 2026-03-06
 
 Claude Code agents currently have no structured way to learn how to use grafanactl. The existing skill content (under `.claude/skills/`) is contributor-facing and contains four verified bugs -- wrong config paths, a fictional pipe command, incorrect JSON envelope paths, and an unverified flag. Any agent following these skills today will generate commands that fail silently or produce configuration errors.
 
-The grafanactl project needs an installable Claude Code plugin that teaches agents to set up and use grafanactl correctly. This is Stage 1 of a 3-stage effort to make grafanactl the canonical agent interface for Grafana, superseding the separate mcp-grafana MCP server. Stage 1 focuses on the two foundational skills (setup and datasource discovery) plus fixing the four bugs, which unblocks all subsequent stages.
+The grafanactl project needs an installable Claude Code plugin that teaches agents to set up and use grafanactl correctly. This is Stage 1 of a 3-stage effort to make grafanactl the canonical agent interface for Grafana, superseding the separate mcp-grafana MCP server. Stage 1 focuses on three foundational skills (setup, datasource discovery, and alert investigation) plus fixing the four bugs, which unblocks all subsequent stages.
 
 Current workaround: Users manually paste grafanactl commands into conversations or rely on the broken skill content, leading to trial-and-error debugging of malformed commands.
 
@@ -28,10 +28,11 @@ Current workaround: Users manually paste grafanactl commands into conversations 
 - Fix all 4 bugs in existing skill content so corrected material can be reused
 - Write `skills/setup-grafanactl/` skill from scratch using `agent-docs/config-system.md` as authoritative source
 - Adapt `skills/explore-datasources/` skill from existing `.claude/skills/discover-datasources/` with bug fixes applied
+- Adapt `skills/investigate-alert/` skill from existing `.claude/skills/grafana-investigate-alert/` with plugin-dev standards applied
 - Create `references/configuration.md` from scratch (correct config paths, env vars, namespace resolution)
 - Copy and verify `references/discovery-patterns.md` and `references/logql-syntax.md` from existing skill
 - Verify the plugin loads with `claude --plugin-dir`
-- Verify both skills appear and auto-trigger on relevant user intents
+- Verify all three skills appear and auto-trigger on relevant user intents
 - Validate each skill with `plugin-dev:skill-reviewer` (no major issues)
 - Validate the plugin with `plugin-dev:plugin-validator` (passes without critical errors)
 
@@ -54,8 +55,9 @@ Current workaround: Users manually paste grafanactl commands into conversations 
 | Skills-first architecture (no MCP server) | Plugin uses skills + Bash tool, not an MCP server binary | grafanactl already outputs structured JSON (`-o json` on every read command); an MCP server would duplicate `internal/resources/` logic. Skills inject workflow knowledge; agents compose CLI commands. Zero additional process overhead. | Research report Section 1, Section 2 |
 | Rewrite config content from scratch | Do not attempt to patch existing `configuration.md`; write new content from `agent-docs/config-system.md` | Existing config content uses a fictional `auth.type/auth.token` schema throughout. The bug is systematic (wrong struct hierarchy, wrong field names, wrong YAML layout). Patching would be error-prone; rewriting from the authoritative source is safer and faster. | Research report Section 5 (Bug 1), `agent-docs/config-system.md` data model |
 | Adapt discover-datasources as-is with minimal edits | Copy existing `.claude/skills/discover-datasources/` content rather than rewriting | The discover-datasources skill has correct commands, correct jq paths, and no config path references. Only needs removal of any `grafanactl graph` pipe references and addition of cross-references. Highest-quality reusable asset. | Research report Section 4 reusability assessment |
-| Stub the grafana-debugger agent | Ship agent as a system prompt stub, not a full diagnostic workflow | Full debugging workflow depends on the `debug-with-grafana` skill (Stage 2). A stub allows the plugin structure to be complete and the agent to be refined when its supporting skill ships. | Staged delivery plan; avoids shipping an agent that references nonexistent skills |
+| Stub the grafana-debugger agent (with investigate-alert reference) | Ship agent as a system prompt stub that references the investigate-alert skill for alert-specific workflows, but defers full debugging workflow to Stage 2 | The agent can now reference a concrete skill (investigate-alert) for alert investigation, making it partially functional. Full debugging workflow still depends on Stage 2 skills. | Staged delivery plan; investigate-alert skill provides alert-specific capability |
 | Use plugin-dev meta-skills for implementation guidance and quality gates | Invoke `plugin-dev:plugin-structure` when scaffolding, `plugin-dev:skill-development` when writing skills, `plugin-dev:agent-development` when writing the agent stub, `plugin-dev:plugin-validator` and `plugin-dev:skill-reviewer` for final validation | Plugin-dev meta-skills encode best practices for Claude Code plugin authoring. Using them as quality gates ensures the plugin follows documented conventions without requiring the implementer to read all plugin documentation upfront. | Claude Code plugin-dev skill suite |
+| Include investigate-alert in Stage 1 | Adapt `.claude/skills/grafana-investigate-alert/` into plugin as a third skill | The skill already exists, uses correct grafanactl commands (no Bug 1-4 patterns), and is production-quality (4-step workflow, error handling, output templates). Including it in Stage 1 adds a high-value operational skill with minimal adaptation effort. It also gives the grafana-debugger agent a concrete skill to reference for alert-specific workflows. | `.claude/skills/grafana-investigate-alert/SKILL.md` audit |
 
 ## Functional Requirements
 
@@ -79,6 +81,8 @@ claude-plugin/
             references/
                 discovery-patterns.md
                 logql-syntax.md
+        investigate-alert/
+            SKILL.md
 ```
 
 Nesting under `claude-plugin/` keeps all plugin content isolated from the rest of the repository (no `agents/` or `skills/` directories at the repo root), enables `git` change tracking as a coherent unit, and allows the plugin to be loaded with `claude --plugin-dir ./claude-plugin`.
@@ -130,6 +134,16 @@ Nesting under `claude-plugin/` keeps all plugin content isolated from the rest o
 
 - FR-018: `skills/explore-datasources/references/logql-syntax.md` MUST be copied from `.claude/skills/discover-datasources/references/logql-syntax.md` after verifying it contains no Bug 1-4 content.
 
+### investigate-alert Skill
+
+- FR-031: `skills/investigate-alert/SKILL.md` MUST be adapted from `.claude/skills/grafana-investigate-alert/SKILL.md`. The adaptation MUST preserve the existing 4-step workflow structure (Verify Context, Get Alert Details, Full Investigation, Surface Resources), output format templates, and error handling section.
+
+- FR-032: `skills/investigate-alert/SKILL.md` MUST include YAML frontmatter with `name` and `description` fields. The `description` MUST mention alert investigation, alert firing, alert state, and Grafana alerts.
+
+- FR-033: The adapted skill MUST contain zero instances of Bug 1-4 patterns. Specifically: no `auth.type`/`auth.token` config paths, no `| grafanactl graph` pipes, no bare-array jq paths on datasource list output, no `--all-versions` flag.
+
+- FR-034: The adapted skill MUST add a cross-reference to the `setup-grafanactl` skill for cases where grafanactl is not configured.
+
 ### grafana-debugger Agent Stub
 
 - FR-019: `agents/grafana-debugger.md` MUST contain YAML frontmatter with `name` ("grafana-debugger") and `description` fields. The description MUST mention diagnosing application issues, errors, latency, and service degradation using Grafana observability data.
@@ -144,17 +158,19 @@ Nesting under `claude-plugin/` keeps all plugin content isolated from the rest o
 
 - FR-023: The plugin MUST load successfully when invoked with `claude --plugin-dir ./claude-plugin`.
 
-- FR-024: Both `setup-grafanactl` and `explore-datasources` skills MUST appear in the skill list when the plugin is loaded.
+- FR-024: All three skills (`setup-grafanactl`, `explore-datasources`, `investigate-alert`) MUST appear in the skill list when the plugin is loaded.
 
 - FR-025: The `setup-grafanactl` skill MUST auto-trigger when a user asks about configuring grafanactl or setting up a Grafana connection.
 
 - FR-026: The `explore-datasources` skill MUST auto-trigger when a user asks about available datasources, metrics, or Grafana data inventory.
 
+- FR-035: The `investigate-alert` skill MUST auto-trigger when a user asks about Grafana alerts, why an alert is firing, or alert investigation.
+
 ### Plugin-Dev Meta-Skill Quality Gates
 
 - FR-027: The implementer MUST invoke `plugin-dev:plugin-structure` before writing `plugin.json` to ensure the manifest follows current Claude Code plugin conventions.
 
-- FR-028: Each skill (`setup-grafanactl`, `explore-datasources`) MUST be reviewed using `plugin-dev:skill-reviewer` after initial authoring. The review MUST find no major issues before the skill is considered complete.
+- FR-028: Each skill (`setup-grafanactl`, `explore-datasources`, `investigate-alert`) MUST be reviewed using `plugin-dev:skill-reviewer` after initial authoring. The review MUST find no major issues before the skill is considered complete.
 
 - FR-029: The `agents/grafana-debugger.md` stub MUST be written following `plugin-dev:agent-development` guidance (frontmatter fields, description quality, tool configuration).
 
@@ -164,7 +180,7 @@ Nesting under `claude-plugin/` keeps all plugin content isolated from the rest o
 
 - GIVEN the plugin files exist at the repository root
   WHEN I inspect the directory structure
-  THEN `claude-plugin/.claude-plugin/plugin.json` exists and is valid JSON with `name`, `version`, `description`, and `keywords` fields; `claude-plugin/agents/grafana-debugger.md` exists with YAML frontmatter; `claude-plugin/skills/setup-grafanactl/SKILL.md` exists with YAML frontmatter; `claude-plugin/skills/explore-datasources/SKILL.md` exists with YAML frontmatter; all referenced `references/` files exist inside `claude-plugin/`.
+  THEN `claude-plugin/.claude-plugin/plugin.json` exists and is valid JSON with `name`, `version`, `description`, and `keywords` fields; `claude-plugin/agents/grafana-debugger.md` exists with YAML frontmatter; `claude-plugin/skills/setup-grafanactl/SKILL.md` exists with YAML frontmatter; `claude-plugin/skills/explore-datasources/SKILL.md` exists with YAML frontmatter; `claude-plugin/skills/investigate-alert/SKILL.md` exists with YAML frontmatter; all referenced `references/` files exist inside `claude-plugin/`.
 
 - GIVEN all plugin content files
   WHEN I search for `auth.type`, `auth.token`, `auth.username`, `auth.password`, or `contexts.<name>.namespace` as a config set target
@@ -192,13 +208,23 @@ Nesting under `claude-plugin/` keeps all plugin content isolated from the rest o
 
 - GIVEN the complete plugin at the repository root
   WHEN I run `claude --plugin-dir ./claude-plugin`
-  THEN the plugin loads without errors, and both `setup-grafanactl` and `explore-datasources` appear as available skills.
+  THEN the plugin loads without errors, and `setup-grafanactl`, `explore-datasources`, and `investigate-alert` appear as available skills.
 
 - GIVEN the plugin is loaded
   WHEN I say "help me set up grafanactl"
   THEN the `setup-grafanactl` skill is triggered.
   WHEN I say "what datasources does my Grafana have"
   THEN the `explore-datasources` skill is triggered.
+  WHEN I say "why is this alert firing"
+  THEN the `investigate-alert` skill is triggered.
+
+- GIVEN `skills/investigate-alert/SKILL.md`
+  WHEN I compare it to `.claude/skills/grafana-investigate-alert/SKILL.md`
+  THEN the 4-step workflow, output format templates, and error handling section are preserved. A cross-reference to `setup-grafanactl` is present.
+
+- GIVEN `skills/investigate-alert/SKILL.md` is complete
+  WHEN I run `plugin-dev:skill-reviewer` against it
+  THEN the review finds no major issues.
 
 - GIVEN `skills/setup-grafanactl/references/configuration.md`
   WHEN I compare the config set commands to the data model in `agent-docs/config-system.md`
@@ -245,7 +271,7 @@ Nesting under `claude-plugin/` keeps all plugin content isolated from the rest o
 
 - [NEEDS VERIFICATION]: How accurately does Claude Code auto-trigger skills based on `description` field matching? Requires manual testing with a matrix of user prompts before shipping.
 
-- [UNCERTAIN]: Should the `grafana-debugger` agent stub reference specific skills by name? Current decision: keep it generic (describe the approach, not skill names) to avoid coupling.
+- [RESOLVED]: Should the `grafana-debugger` agent stub reference specific skills by name? — Yes, it can now reference `investigate-alert` for alert-specific workflows. General debugging skills remain Stage 2.
 
 - [UNCERTAIN]: Should `explore-datasources/SKILL.md` explicitly fix Bug 3 even if the existing discover-datasources skill doesn't have it? Verify discover-datasources jq examples before copying.
 

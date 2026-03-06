@@ -2,7 +2,6 @@ package checks
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,19 +13,15 @@ import (
 
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
+	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// SMConfigLoader can load SM credentials and the current namespace.
-type SMConfigLoader interface {
-	LoadSMConfig(ctx context.Context) (baseURL, token, namespace string, err error)
-}
-
 // Commands returns the checks command group with CRUD subcommands.
-func Commands(loader SMConfigLoader) *cobra.Command {
+func Commands(loader smcfg.Loader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "checks",
 		Short:   "Manage Synthetic Monitoring checks.",
@@ -56,7 +51,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListCommand(loader SMConfigLoader) *cobra.Command {
+func newListCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -148,7 +143,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader SMConfigLoader) *cobra.Command {
+func newGetCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get ID",
@@ -214,7 +209,7 @@ func (o *pullOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.OutputDir, "output", "d", ".", "Directory to write check YAML files to")
 }
 
-func newPullCommand(loader SMConfigLoader) *cobra.Command {
+func newPullCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
 		Use:   "pull",
@@ -287,7 +282,7 @@ func (o *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without applying them")
 }
 
-func newPushCommand(loader SMConfigLoader) *cobra.Command {
+func newPushCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &pushOpts{}
 	cmd := &cobra.Command{
 		Use:   "push FILE...",
@@ -436,7 +431,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
 }
 
-func newDeleteCommand(loader SMConfigLoader) *cobra.Command {
+func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete ID...",

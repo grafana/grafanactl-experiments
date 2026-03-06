@@ -1,7 +1,6 @@
 package probes
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,18 +8,14 @@ import (
 
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
+	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// SMConfigLoader can load SM credentials and the current namespace.
-type SMConfigLoader interface {
-	LoadSMConfig(ctx context.Context) (baseURL, token, namespace string, err error)
-}
-
 // Commands returns the probes command group.
-func Commands(loader SMConfigLoader) *cobra.Command {
+func Commands(loader smcfg.Loader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "probes",
 		Short:   "Manage Synthetic Monitoring probes.",
@@ -44,7 +39,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListCommand(loader SMConfigLoader) *cobra.Command {
+func newListCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",

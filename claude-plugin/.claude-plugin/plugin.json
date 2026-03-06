@@ -1,0 +1,10 @@
+{
+  "name": "grafanactl",
+  "version": "0.1.0",
+  "description": "Debug, explore, and instrument with Grafana using grafanactl CLI",
+  "keywords": ["grafana", "observability", "monitoring", "prometheus", "loki", "dashboards"],
+  "author": {
+    "name": "Grafana Labs"
+  },
+  "license": "Apache-2.0"
+}

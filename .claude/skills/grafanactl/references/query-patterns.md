@@ -314,13 +314,34 @@ grafanactl query -d <loki-uid> -t loki -e '{job="varlogs",namespace="prod"}'
 
 ### Table Format (Default)
 
-Human-readable table output:
+For Prometheus queries, shows metric values in a table:
 
 ```bash
 grafanactl query -d <uid> -e 'up'
 # Output:
 # METRIC    VALUE  TIMESTAMP
 # up{...}   1      2026-03-03T12:00:00Z
+```
+
+For Loki queries, shows raw log lines:
+
+```bash
+grafanactl query -d <loki-uid> -e '{job="varlogs"}' --from now-5m --to now
+# Output:
+# ts=2026-03-06T10:30:00Z level=info msg="request completed" status=200
+# ts=2026-03-06T10:30:01Z level=error msg="connection refused"
+```
+
+### Wide Format (Loki only)
+
+Shows all labels plus the log line:
+
+```bash
+grafanactl query -d <loki-uid> -e '{job="varlogs"}' --from now-5m --to now -o wide
+# Output:
+# CLUSTER        DETECTED_LEVEL  JOB       NAMESPACE  POD          LINE
+# dev-eu-west-2  info            varlogs   prod       app-abc123   ts=2026-03-06T10:30:00Z...
+# dev-eu-west-2  error           varlogs   prod       app-abc123   ts=2026-03-06T10:30:01Z...
 ```
 
 ### JSON Format

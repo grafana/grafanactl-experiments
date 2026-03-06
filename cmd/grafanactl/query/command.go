@@ -94,7 +94,10 @@ func Command() *cobra.Command {
 	grafanactl query -d <pyroscope-uid> -t pyroscope -e '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --start now-1h --end now
 
 	# Output as JSON
-	grafanactl query -d <datasource-uid> -e 'up' -o json`,
+	grafanactl query -d <datasource-uid> -e 'up' -o json
+
+	# Loki logs with all labels (wide format)
+	grafanactl query -d <loki-uid> -e '{job="varlogs"}' --from now-1h --to now -o wide`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {

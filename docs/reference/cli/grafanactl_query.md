@@ -37,6 +37,9 @@ grafanactl query [flags]
 
 	# Output as JSON
 	grafanactl query -d <datasource-uid> -e 'up' -o json
+
+	# Loki logs with all labels (wide format)
+	grafanactl query -d <loki-uid> -e '{job="varlogs"}' --from now-1h --to now -o wide
 ```
 
 ### Options
@@ -53,7 +56,6 @@ grafanactl query [flags]
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
-  -t, --type string           Datasource type (prometheus, loki, pyroscope) (default "prometheus")
 ```
 
 ### Options inherited from parent commands

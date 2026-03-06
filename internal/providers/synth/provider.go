@@ -188,11 +188,11 @@ func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string
 
 	if smURL == "" {
 		return "", "", "", errors.New(
-			"SM URL not configured: set providers.synth.sm_url in config or GRAFANA_SM_URL env var")
+			"SM URL not configured: set providers.synth.sm-url in config or GRAFANA_SM_URL env var")
 	}
 	if smToken == "" {
 		return "", "", "", errors.New(
-			"SM token not configured: set providers.synth.sm_token in config or GRAFANA_SM_TOKEN env var")
+			"SM token not configured: set providers.synth.sm-token in config or GRAFANA_SM_TOKEN env var")
 	}
 
 	// Derive namespace from the Grafana config for K8s envelope metadata.

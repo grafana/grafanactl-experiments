@@ -311,8 +311,8 @@ Live smoke tests (load credentials from `.env`):
 source .env
 
 # Configure a context with SM credentials
-bin/grafanactl config set providers.synth.sm_url "$GRAFANA_SM_URL"
-bin/grafanactl config set providers.synth.sm_token "$GRAFANA_SM_TOKEN"
+bin/grafanactl config set providers.synth.sm-url "$GRAFANA_SM_URL"
+bin/grafanactl config set providers.synth.sm-token "$GRAFANA_SM_TOKEN"
 
 # Probes
 bin/grafanactl synth probes list

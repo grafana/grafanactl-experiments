@@ -246,8 +246,19 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 	for _, frame := range grafanaResult.Frames {
 		// Extract stats and notices from frame metadata
 		if frame.Schema.Meta != nil {
-			result.Data.Stats = extractStats(frame.Schema.Meta.Stats)
-			result.Data.Notices = frame.Schema.Meta.Notices
+			frameStats := extractStats(frame.Schema.Meta.Stats)
+			if frameStats != nil {
+				if result.Data.Stats == nil {
+					result.Data.Stats = frameStats
+				} else {
+					result.Data.Stats.Summary.BytesProcessedPerSecond += frameStats.Summary.BytesProcessedPerSecond
+					result.Data.Stats.Summary.LinesProcessedPerSecond += frameStats.Summary.LinesProcessedPerSecond
+					result.Data.Stats.Summary.TotalBytesProcessed += frameStats.Summary.TotalBytesProcessed
+					result.Data.Stats.Summary.TotalLinesProcessed += frameStats.Summary.TotalLinesProcessed
+					result.Data.Stats.Summary.ExecTime += frameStats.Summary.ExecTime
+				}
+			}
+			result.Data.Notices = append(result.Data.Notices, frame.Schema.Meta.Notices...)
 		}
 
 		// Find field indices by name

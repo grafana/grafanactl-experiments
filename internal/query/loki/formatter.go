@@ -124,12 +124,7 @@ func collectStreamLabelNames(streams []StreamEntry) []string {
 }
 
 func isHiddenLabel(name string) bool {
-	switch name {
-	case "__adaptive_logs_sampled__", "debug", "pod_template_hash":
-		return true
-	default:
-		return false
-	}
+	return strings.HasPrefix(name, "__")
 }
 
 func collectLabelNames(series []map[string]string) []string {

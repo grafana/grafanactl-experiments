@@ -21,7 +21,7 @@ import (
 )
 
 // Commands returns the checks command group with CRUD subcommands.
-func Commands(loader smcfg.Loader) *cobra.Command {
+func Commands(loader smcfg.StatusLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "checks",
 		Short:   "Manage Synthetic Monitoring checks.",
@@ -33,6 +33,8 @@ func Commands(loader smcfg.Loader) *cobra.Command {
 		newPushCommand(loader),
 		newPullCommand(loader),
 		newDeleteCommand(loader),
+		newStatusCommand(loader),
+		newTimelineCommand(loader),
 	)
 	return cmd
 }

@@ -1,0 +1,757 @@
+package checks
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"strconv"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
+	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/grafanactl/internal/format"
+	"github.com/grafana/grafanactl/internal/grafana"
+	"github.com/grafana/grafanactl/internal/graph"
+	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
+	"github.com/grafana/grafanactl/internal/query/prometheus"
+	"github.com/grafana/promql-builder/go/promql"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+// CheckStatusResult holds merged check + metric data for a single check.
+type CheckStatusResult struct {
+	ID          int64    `json:"id"`
+	Job         string   `json:"job"`
+	Target      string   `json:"target"`
+	Type        string   `json:"type"`
+	Success     *float64 `json:"success,omitempty"`
+	ProbesUp    int      `json:"probesUp"`
+	ProbesTotal int      `json:"probesTotal"`
+	Status      string   `json:"status"`
+}
+
+// CheckTimelinePayload is passed to timeline codecs for encoding.
+type CheckTimelinePayload struct {
+	Check  Check
+	Series []TimelineSeries
+	Start  time.Time
+	End    time.Time
+}
+
+// TimelineSeries holds time series data for a single probe.
+type TimelineSeries struct {
+	Probe  string
+	Points []TimelinePoint
+}
+
+// TimelinePoint represents a single data point in the timeline.
+type TimelinePoint struct {
+	Time  time.Time
+	Value float64
+}
+
+// ---------------------------------------------------------------------------
+// status command
+// ---------------------------------------------------------------------------
+
+type statusOpts struct {
+	IO            cmdio.Options
+	DatasourceUID string
+}
+
+func (o *statusOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &StatusTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+
+	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "UID of the Prometheus datasource to query")
+}
+
+func newStatusCommand(loader smcfg.StatusLoader) *cobra.Command {
+	opts := &statusOpts{}
+	cmd := &cobra.Command{
+		Use:   "status [ID]",
+		Short: "Show pass/fail status of Synthetic Monitoring checks.",
+		Long: `Show pass/fail status by combining the SM API with Prometheus probe_success metrics.
+
+Displays current success rate, number of probes reporting, and health status
+for each check. Requires a Prometheus datasource containing SM metrics.`,
+		Example: `  # Show status of all checks.
+  grafanactl synth checks status
+
+  # Show status of a specific check by ID.
+  grafanactl synth checks status 42
+
+  # Specify the Prometheus datasource to query.
+  grafanactl synth checks status --datasource-uid my-prometheus
+
+  # Output as JSON for scripting.
+  grafanactl synth checks status -o json`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+
+			// Load SM config and list/get checks.
+			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			client := NewClient(baseURL, token)
+
+			var checks []Check
+			if len(args) == 1 {
+				id, err := strconv.ParseInt(args[0], 10, 64)
+				if err != nil {
+					return fmt.Errorf("invalid check ID %q: must be a number", args[0])
+				}
+				c, err := client.Get(ctx, id)
+				if err != nil {
+					return err
+				}
+				checks = []Check{*c}
+			} else {
+				checks, err = client.List(ctx)
+				if err != nil {
+					return err
+				}
+			}
+
+			if len(checks) == 0 {
+				cmdio.Info(cmd.OutOrStdout(), "No checks found.")
+				return nil
+			}
+
+			// Resolve datasource UID.
+			dsUID, err := resolveDataSourceUID(ctx, opts.DatasourceUID, loader)
+			if err != nil {
+				return err
+			}
+
+			// Load REST config and create Prometheus client.
+			restCfg, err := loader.LoadRESTConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			promClient, err := prometheus.NewClient(restCfg)
+			if err != nil {
+				return err
+			}
+
+			// Query metrics for each check.
+			successMap := make(map[string]float64)
+			probeCountMap := make(map[string]float64)
+
+			for _, c := range checks {
+				key := c.Job + "/" + c.Target
+
+				// Success rate query.
+				if q, err := BuildSuccessRateQuery(c.Job, c.Target); err == nil {
+					if val := queryInstant(ctx, promClient, dsUID, q); val != nil {
+						successMap[key] = *val
+					}
+				}
+
+				// Probe count query.
+				if q, err := BuildProbeCountQuery(c.Job, c.Target); err == nil {
+					if val := queryInstant(ctx, promClient, dsUID, q); val != nil {
+						probeCountMap[key] = *val
+					}
+				}
+			}
+
+			results := BuildCheckStatusResults(checks, successMap, probeCountMap)
+
+			codec, err := opts.IO.Codec()
+			if err != nil {
+				return err
+			}
+
+			return codec.Encode(cmd.OutOrStdout(), results)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// timeline command
+// ---------------------------------------------------------------------------
+
+type timelineOpts struct {
+	IO            cmdio.Options
+	DatasourceUID string
+	Window        string
+}
+
+func (o *timelineOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &TimelineTableCodec{})
+	o.IO.RegisterCustomCodec("graph", &TimelineGraphCodec{})
+	o.IO.DefaultFormat("graph")
+	o.IO.BindFlags(flags)
+
+	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "UID of the Prometheus datasource to query")
+	flags.StringVar(&o.Window, "window", "6h", "Time window to display (e.g. 1h, 6h, 24h, 7d)")
+}
+
+func newTimelineCommand(loader smcfg.StatusLoader) *cobra.Command {
+	opts := &timelineOpts{}
+	cmd := &cobra.Command{
+		Use:   "timeline ID",
+		Short: "Render probe_success over time as a terminal line chart.",
+		Long: `Render probe_success values over time as a line chart by executing a range
+query against the Prometheus datasource.
+
+Each probe reporting for the check is rendered as a separate series.
+Requires a Prometheus datasource containing SM metrics.`,
+		Example: `  # Render timeline for a check over the past 6 hours (default).
+  grafanactl synth checks timeline 42
+
+  # Custom time window.
+  grafanactl synth checks timeline 42 --window 24h
+
+  # Output timeline data as a table.
+  grafanactl synth checks timeline 42 -o table
+
+  # Specify the Prometheus datasource.
+  grafanactl synth checks timeline 42 --datasource-uid my-prometheus`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+
+			// Parse check ID.
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid check ID %q: must be a number", args[0])
+			}
+
+			// Load SM config and get the check.
+			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			client := NewClient(baseURL, token)
+
+			c, err := client.Get(ctx, id)
+			if err != nil {
+				return err
+			}
+
+			// Parse window.
+			window, err := ParseWindow(opts.Window)
+			if err != nil {
+				return fmt.Errorf("invalid --window: %w", err)
+			}
+
+			now := time.Now()
+			start := now.Add(-window)
+			end := now
+			step := autoStep(start, end)
+
+			// Resolve datasource UID.
+			dsUID, err := resolveDataSourceUID(ctx, opts.DatasourceUID, loader)
+			if err != nil {
+				return err
+			}
+
+			// Load REST config and create Prometheus client.
+			restCfg, err := loader.LoadRESTConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			promClient, err := prometheus.NewClient(restCfg)
+			if err != nil {
+				return err
+			}
+
+			// Range query for probe_success.
+			q, err := BuildTimelineQuery(c.Job, c.Target)
+			if err != nil {
+				return fmt.Errorf("building timeline query: %w", err)
+			}
+
+			resp, err := promClient.Query(ctx, dsUID, prometheus.QueryRequest{
+				Query: q,
+				Start: start,
+				End:   end,
+				Step:  step,
+			})
+			if err != nil {
+				return fmt.Errorf("querying timeline metrics: %w", err)
+			}
+
+			// Build series from response: one series per probe label value.
+			series := buildTimelineSeries(resp)
+
+			if len(series) == 0 {
+				cmdio.Info(cmd.OutOrStdout(), "No time-series data available for check %d.", id)
+				return nil
+			}
+
+			codec, err := opts.IO.Codec()
+			if err != nil {
+				return err
+			}
+
+			return codec.Encode(cmd.OutOrStdout(), CheckTimelinePayload{
+				Check:  *c,
+				Series: series,
+				Start:  start,
+				End:    end,
+			})
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// PromQL query builders
+// ---------------------------------------------------------------------------
+
+// BuildSuccessRateQuery builds a PromQL query for the average probe_success
+// rate over 5 minutes, grouped by job and instance.
+func BuildSuccessRateQuery(job, instance string) (string, error) {
+	expr, err := promql.Avg(
+		promql.AvgOverTime(
+			promql.Vector("probe_success").
+				Label("job", job).
+				Label("instance", instance).
+				Range("5m"),
+		),
+	).By([]string{"job", "instance"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// BuildProbeCountQuery builds a PromQL query that counts the number of probes
+// currently reporting for a check.
+func BuildProbeCountQuery(job, instance string) (string, error) {
+	expr, err := promql.Count(
+		promql.Vector("probe_success").
+			Label("job", job).
+			Label("instance", instance),
+	).By([]string{"job", "instance"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// BuildTimelineQuery builds a PromQL query for raw probe_success values.
+func BuildTimelineQuery(job, instance string) (string, error) {
+	expr, err := promql.Vector("probe_success").
+		Label("job", job).
+		Label("instance", instance).
+		Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// ---------------------------------------------------------------------------
+// Metric fetching helpers
+// ---------------------------------------------------------------------------
+
+// queryInstant executes an instant PromQL query and returns the first float64 value.
+// Returns nil on error (graceful degradation).
+func queryInstant(ctx context.Context, client *prometheus.Client, dsUID, query string) *float64 {
+	resp, err := client.Query(ctx, dsUID, prometheus.QueryRequest{Query: query})
+	if err != nil {
+		return nil
+	}
+	if resp.Status != "success" || len(resp.Data.Result) == 0 {
+		return nil
+	}
+	return parseSampleValue(resp.Data.Result[0])
+}
+
+// parseSampleValue extracts the float64 value from an instant query sample.
+func parseSampleValue(sample prometheus.Sample) *float64 {
+	if len(sample.Value) < 2 {
+		return nil
+	}
+
+	var val float64
+	switch v := sample.Value[1].(type) {
+	case string:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil
+		}
+		val = f
+	case float64:
+		val = v
+	default:
+		return nil
+	}
+
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		return nil
+	}
+
+	return &val
+}
+
+// buildTimelineSeries converts a Prometheus query response into timeline series,
+// one per distinct "probe" label value.
+func buildTimelineSeries(resp *prometheus.QueryResponse) []TimelineSeries {
+	if resp == nil || resp.Status != "success" {
+		return nil
+	}
+
+	var result []TimelineSeries
+	for _, sample := range resp.Data.Result {
+		probeName := sample.Metric["probe"]
+		if probeName == "" {
+			probeName = "unknown"
+		}
+
+		var points []TimelinePoint
+		for _, vals := range sample.Values {
+			if len(vals) < 2 {
+				continue
+			}
+
+			ts, ok := vals[0].(float64)
+			if !ok {
+				continue
+			}
+
+			val, err := parseMatrixValue(vals[1])
+			if err != nil {
+				continue
+			}
+
+			points = append(points, TimelinePoint{
+				Time:  time.Unix(int64(ts), 0),
+				Value: val,
+			})
+		}
+
+		if len(points) > 0 {
+			result = append(result, TimelineSeries{
+				Probe:  probeName,
+				Points: points,
+			})
+		}
+	}
+
+	return result
+}
+
+// parseMatrixValue extracts a float64 value from an any (string or float64).
+func parseMatrixValue(raw any) (float64, error) {
+	var val float64
+
+	switch v := raw.(type) {
+	case string:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, err
+		}
+		val = f
+	case float64:
+		val = v
+	default:
+		return 0, fmt.Errorf("unexpected value type %T", raw)
+	}
+
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		return 0, errors.New("value is NaN or Inf")
+	}
+
+	return val, nil
+}
+
+// ---------------------------------------------------------------------------
+// Result building
+// ---------------------------------------------------------------------------
+
+// BuildCheckStatusResults merges check definitions with metric data.
+func BuildCheckStatusResults(checks []Check, successMap, probeCountMap map[string]float64) []CheckStatusResult {
+	results := make([]CheckStatusResult, 0, len(checks))
+
+	for _, c := range checks {
+		key := c.Job + "/" + c.Target
+
+		r := CheckStatusResult{
+			ID:          c.ID,
+			Job:         c.Job,
+			Target:      c.Target,
+			Type:        c.Settings.CheckType(),
+			ProbesTotal: len(c.Probes),
+		}
+
+		if val, ok := successMap[key]; ok {
+			r.Success = &val
+		}
+
+		if cnt, ok := probeCountMap[key]; ok {
+			r.ProbesUp = int(cnt)
+		}
+
+		r.Status = computeCheckStatus(r.Success)
+		results = append(results, r)
+	}
+
+	return results
+}
+
+// computeCheckStatus determines the display status for a check.
+func computeCheckStatus(success *float64) string {
+	if success == nil {
+		return "NODATA"
+	}
+	if *success >= 0.5 {
+		return "OK"
+	}
+	return "FAILING"
+}
+
+// ---------------------------------------------------------------------------
+// Datasource resolution
+// ---------------------------------------------------------------------------
+
+// resolveDataSourceUID resolves the Prometheus datasource UID from:
+// 1. Explicit flag value (highest priority).
+// 2. Config default-prometheus-datasource.
+// 3. Auto-discover via Grafana API (if exactly one Prometheus datasource exists).
+// 4. Error with helpful message.
+func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.StatusLoader) (string, error) {
+	if flagUID != "" {
+		return flagUID, nil
+	}
+
+	cfg, err := loader.LoadConfig(ctx)
+	if err != nil {
+		return "", errors.New(
+			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
+	}
+
+	curCtx := cfg.GetCurrentContext()
+	if curCtx == nil {
+		return "", errors.New(
+			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
+	}
+
+	// Try config default.
+	if uid := curCtx.DefaultPrometheusDatasource; uid != "" {
+		return uid, nil
+	}
+
+	// Auto-discover: query Grafana API for Prometheus datasources.
+	return discoverPrometheusDatasource(curCtx)
+}
+
+// discoverPrometheusDatasource queries the Grafana API to find Prometheus datasources.
+// Returns the UID if exactly one exists, an error describing the situation otherwise.
+func discoverPrometheusDatasource(curCtx *config.Context) (string, error) {
+	gClient, err := grafana.ClientFromContext(curCtx)
+	if err != nil {
+		return "", errors.New(
+			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
+	}
+
+	resp, err := gClient.Datasources.GetDataSources()
+	if err != nil {
+		return "", errors.New(
+			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
+	}
+
+	var promUIDs []string
+	for _, ds := range resp.Payload {
+		if strings.EqualFold(ds.Type, "prometheus") {
+			promUIDs = append(promUIDs, ds.UID)
+		}
+	}
+
+	switch len(promUIDs) {
+	case 1:
+		return promUIDs[0], nil
+	case 0:
+		return "", errors.New(
+			"no Prometheus datasources found; configure one in Grafana first")
+	default:
+		return "", fmt.Errorf(
+			"multiple Prometheus datasources found (%s); specify one with --datasource-uid or set default-prometheus-datasource in config",
+			strings.Join(promUIDs, ", "))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Window parsing
+// ---------------------------------------------------------------------------
+
+// ParseWindow parses a duration string like "6h", "24h", "7d", "30m".
+func ParseWindow(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, errors.New("window must not be empty")
+	}
+
+	// Try standard Go duration first (handles "6h", "30m", "1h30m", etc.).
+	if d, err := time.ParseDuration(s); err == nil {
+		return d, nil
+	}
+
+	// Handle "d" suffix for days.
+	if strings.HasSuffix(s, "d") {
+		numStr := s[:len(s)-1]
+		n, err := strconv.Atoi(numStr)
+		if err != nil {
+			return 0, fmt.Errorf("invalid window %q: %w", s, err)
+		}
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+
+	return 0, fmt.Errorf("invalid window %q: expected format like 1h, 6h, 24h, 7d", s)
+}
+
+// autoStep calculates a reasonable query step for the given time range,
+// targeting ~200 data points. The minimum step is 1 minute.
+func autoStep(start, end time.Time) time.Duration {
+	const targetPoints = 200
+	const minStep = time.Minute
+
+	d := end.Sub(start)
+	step := max(d/targetPoints, minStep)
+
+	return step.Truncate(time.Minute)
+}
+
+// ---------------------------------------------------------------------------
+// Status table codec
+// ---------------------------------------------------------------------------
+
+type StatusTableCodec struct{}
+
+func (c *StatusTableCodec) Format() format.Format { return "table" }
+
+func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
+	results, ok := v.([]CheckStatusResult)
+	if !ok {
+		return errors.New("invalid data type for status table codec: expected []CheckStatusResult")
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tSTATUS")
+
+	for _, r := range results {
+		successStr := "--"
+		if r.Success != nil {
+			successStr = fmt.Sprintf("%.2f%%", *r.Success*100)
+		}
+
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n",
+			r.ID, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, r.Status)
+	}
+
+	return tw.Flush()
+}
+
+func (c *StatusTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("status table codec does not support decoding")
+}
+
+// ---------------------------------------------------------------------------
+// Timeline graph codec
+// ---------------------------------------------------------------------------
+
+type TimelineGraphCodec struct{}
+
+func (c *TimelineGraphCodec) Format() format.Format { return "graph" }
+
+func (c *TimelineGraphCodec) Encode(w io.Writer, v any) error {
+	payload, ok := v.(CheckTimelinePayload)
+	if !ok {
+		return fmt.Errorf("TimelineGraphCodec: expected CheckTimelinePayload, got %T", v)
+	}
+
+	if len(payload.Series) == 0 {
+		fmt.Fprintln(w, "No time-series data available.")
+		return nil
+	}
+
+	chartData := &graph.ChartData{
+		Title:  fmt.Sprintf("probe_success — %s (%s)", payload.Check.Job, payload.Check.Target),
+		Series: make([]graph.Series, 0, len(payload.Series)),
+	}
+
+	for _, ts := range payload.Series {
+		points := make([]graph.Point, len(ts.Points))
+		for i, pt := range ts.Points {
+			points[i] = graph.Point{
+				Time:  pt.Time,
+				Value: pt.Value,
+			}
+		}
+		chartData.Series = append(chartData.Series, graph.Series{
+			Name:   ts.Probe,
+			Points: points,
+		})
+	}
+
+	opts := graph.DefaultChartOptions()
+	return graph.RenderLineChart(w, chartData, opts)
+}
+
+func (c *TimelineGraphCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("TimelineGraphCodec: decode not supported")
+}
+
+// ---------------------------------------------------------------------------
+// Timeline table codec
+// ---------------------------------------------------------------------------
+
+type TimelineTableCodec struct{}
+
+func (c *TimelineTableCodec) Format() format.Format { return "table" }
+
+func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
+	payload, ok := v.(CheckTimelinePayload)
+	if !ok {
+		return fmt.Errorf("TimelineTableCodec: expected CheckTimelinePayload, got %T", v)
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "PROBE\tTIMESTAMP\tSUCCESS")
+
+	for _, ts := range payload.Series {
+		for _, pt := range ts.Points {
+			fmt.Fprintf(tw, "%s\t%s\t%.4f\n",
+				ts.Probe,
+				pt.Time.Format(time.RFC3339),
+				pt.Value,
+			)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *TimelineTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("TimelineTableCodec: decode not supported")
+}

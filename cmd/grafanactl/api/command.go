@@ -125,7 +125,7 @@ func Command() *cobra.Command {
 
 func resolveBody(cmd *cobra.Command, data string) (io.Reader, error) {
 	if data == "" {
-		return nil, nil
+		return http.NoBody, nil
 	}
 	if data == "@-" {
 		b, err := io.ReadAll(cmd.InOrStdin())

@@ -101,7 +101,53 @@ grafanactl resources:
 
 ### 1.6 Test API Behavior
 
-Before designing the adapter, validate assumptions by making real API calls:
+Before designing the adapter, validate assumptions by making real API calls.
+
+**Choose a test context:**
+
+First, identify which Grafana instance you'll test against:
+
+```bash
+# List available contexts
+grafanactl config get-contexts
+
+# Switch to the context for testing (e.g., dev, staging)
+grafanactl config use-context <context-name>
+```
+
+**Using `grafanactl api`:**
+
+Once you've selected the right context, use `grafanactl api` to test endpoints:
+
+```bash
+# List resources
+grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource}
+
+# Get a specific resource by ID
+grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource}/{id}
+
+# Create a resource (POST implied by -d)
+grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource} -d @payload.json
+
+# Update a resource
+grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource}/{id} -X PUT -d @payload.json
+
+# Delete a resource
+grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource}/{id} -X DELETE
+
+# Output as YAML for easier reading
+grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource} -o yaml
+```
+
+**Why `grafanactl api` vs curl:**
+- Uses your configured context's authentication automatically
+- Supports multiple output formats (`-o json|yaml|wide`)
+- Handles TLS configuration from your grafanactl config
+- Less verbose than curl (no explicit token headers needed)
+
+**Fallback to curl:**
+
+If you need to test against an instance not yet configured in grafanactl, use curl:
 
 ```bash
 # List resources
@@ -115,7 +161,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   "$GRAFANA_URL/api/plugins/{plugin-id}/resources/v1/{resource}"
 ```
 
-Things to verify:
+**Things to verify:**
 - Does the response match the OpenAPI spec?
 - What happens on duplicate create? (error, update, or idempotent?)
 - Are IDs server-generated, client-provided, or both?

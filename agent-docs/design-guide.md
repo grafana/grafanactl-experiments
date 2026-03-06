@@ -98,7 +98,7 @@ introspecting API responses. Tracked by R3.1.
 | 3 | `ExitAuthFailure` | Auth failure | 401/403, missing or invalid credentials |
 | 4 | `ExitPartialFailure` | Partial failure | Some resources succeeded, others failed `[RESERVED]` |
 | 5 | `ExitCancelled` | Cancelled | User pressed Ctrl+C (SIGINT) or `context.Canceled` |
-| 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected `[PLANNED]` |
+| 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
 Constants defined in `cmd/grafanactl/fail/exitcodes.go`.
 

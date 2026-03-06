@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/grafanactl/cmd/grafanactl/fail"
+	"github.com/grafana/grafanactl/internal/grafana"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
@@ -91,6 +93,17 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
 		})
 	}
+}
+
+func TestErrorToDetailedError_VersionIncompatible(t *testing.T) {
+	v, err := semver.NewVersion("11.5.0")
+	require.NoError(t, err)
+
+	got := fail.ErrorToDetailedError(&grafana.VersionIncompatibleError{Version: v})
+
+	require.NotNil(t, got)
+	require.NotNil(t, got.ExitCode, "ExitCode should be set for version incompatibility")
+	assert.Equal(t, fail.ExitVersionIncompatible, *got.ExitCode)
 }
 
 func TestErrorToDetailedError_ConverterOrdering(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/grafanactl/internal/grafana"
 	"github.com/grafana/grafanactl/internal/linter"
 	"github.com/grafana/grafanactl/internal/resources"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
@@ -29,6 +30,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 		convertResourcesErrors, // Resources-related
 		convertNetworkErrors,   // Network-related errors
 		convertAPIErrors,       // API-related errors
+		convertVersionErrors,   // Version incompatibility errors
 		convertLinterErrors,    // Linter-related errors
 	}
 
@@ -196,6 +198,23 @@ func convertFSErrors(err error) (*DetailedError, bool) {
 func convertLinterErrors(err error) (*DetailedError, bool) {
 	if errors.Is(err, linter.ErrTestsFailed) {
 		return nil, true
+	}
+
+	return nil, false
+}
+
+func convertVersionErrors(err error) (*DetailedError, bool) {
+	vErr := &grafana.VersionIncompatibleError{}
+	if errors.As(err, &vErr) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: fmt.Sprintf("Grafana version %s is not supported", vErr.Version),
+			Details: "grafanactl requires Grafana 12.0.0 or later",
+			Suggestions: []string{
+				"Upgrade your Grafana instance to version 12.0.0 or later",
+			},
+			ExitCode: new(ExitVersionIncompatible),
+		}, true
 	}
 
 	return nil, false

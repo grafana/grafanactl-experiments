@@ -14,5 +14,5 @@ const (
 	ExitAuthFailure         = 3 // HTTP 401/403, missing/invalid credentials
 	ExitPartialFailure      = 4 // Some resources succeeded, others failed [RESERVED]
 	ExitCancelled           = 5 // User cancelled (SIGINT) or context.Canceled
-	ExitVersionIncompatible = 6 // Grafana version < 12 [PLANNED]
+	ExitVersionIncompatible = 6 // Grafana version < 12
 )

@@ -97,22 +97,22 @@ reference-drift: cli-reference-drift env-var-reference-drift config-reference-dr
 .PHONY: cli-reference
 cli-reference: check-binaries ## Generates a reference for the CLI.
 	@rm -rf ./docs/reference/cli
-	@$(RUN_DEVBOX) go run scripts/cmd-reference/*.go "./docs/reference/cli"
+	@$(RUN_DEVBOX) CGO_ENABLED=0 go run scripts/cmd-reference/*.go "./docs/reference/cli"
 
 .PHONY: env-var-reference
 env-var-reference: check-binaries ## Generates an environment variables reference.
 	@rm -rf ./docs/reference/environment-variables
-	@$(RUN_DEVBOX) go run scripts/env-vars-reference/*.go "./docs/reference/environment-variables"
+	@$(RUN_DEVBOX) CGO_ENABLED=0 go run scripts/env-vars-reference/*.go "./docs/reference/environment-variables"
 
 .PHONY: config-reference
 config-reference: check-binaries ## Generates a reference for the configuration file.
 	@rm -rf ./docs/reference/configuration
-	@$(RUN_DEVBOX) go run scripts/config-reference/*.go "./docs/reference/configuration"
+	@$(RUN_DEVBOX) CGO_ENABLED=0 go run scripts/config-reference/*.go "./docs/reference/configuration"
 
 .PHONY: linter-rules-reference
 linter-rules-reference: check-binaries ## Generates a reference for the built-in linter rules.
 	@rm ./docs/reference/linter-rules/index.md
-	@$(RUN_DEVBOX) go run scripts/linter-rules-reference/*.go "./docs/reference/linter-rules"
+	@$(RUN_DEVBOX) CGO_ENABLED=0 go run scripts/linter-rules-reference/*.go "./docs/reference/linter-rules"
 
 .PHONY: cli-reference-drift
 cli-reference-drift: cli-reference ## Checks for drift in the generated CLI reference.

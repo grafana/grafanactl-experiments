@@ -44,7 +44,7 @@ grafanactl api PATH [flags]
   -H, --header stringArray   Custom headers (repeatable)
   -h, --help                 help for api
   -X, --method string        HTTP method (default: GET, or POST if -d is set)
-  -o, --output string        Output format. One of: json, yaml (default "json")
+  -o, --output string        Output format for JSON responses. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands

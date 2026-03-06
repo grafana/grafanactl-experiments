@@ -1,6 +1,7 @@
 package fail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,6 +23,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*DetailedError, bool){
+		convertContextCanceled, // Context cancellation (must be first — cancellation can wrap other errors)
 		convertConfigErrors,    // Config-related
 		convertFSErrors,        // FS-related
 		convertResourcesErrors, // Resources-related
@@ -118,6 +120,7 @@ func convertAPIErrors(err error) (*DetailedError, bool) {
 				"Make sure that the configured credentials are correct",
 				"Make sure that the configured credentials have enough permissions",
 			},
+			ExitCode: intPtr(ExitAuthFailure),
 		}, true
 	case k8sapi.IsNotFound(statusErr):
 		return &DetailedError{
@@ -193,6 +196,18 @@ func convertFSErrors(err error) (*DetailedError, bool) {
 func convertLinterErrors(err error) (*DetailedError, bool) {
 	if errors.Is(err, linter.ErrTestsFailed) {
 		return nil, true
+	}
+
+	return nil, false
+}
+
+func convertContextCanceled(err error) (*DetailedError, bool) {
+	if errors.Is(err, context.Canceled) {
+		return &DetailedError{
+			Summary:  "Operation cancelled",
+			Parent:   err,
+			ExitCode: intPtr(ExitCancelled),
+		}, true
 	}
 
 	return nil, false

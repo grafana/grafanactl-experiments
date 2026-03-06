@@ -6,8 +6,6 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"golang.org/x/sync/errgroup"
-
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/graph"
@@ -15,6 +13,7 @@ import (
 	"github.com/grafana/grafanactl/internal/query/prometheus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 // ReportStatusResult holds aggregated health data for a single report.

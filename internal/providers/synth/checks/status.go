@@ -14,8 +14,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/grafana/grafana-app-sdk/logging"
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/config"
@@ -28,6 +26,7 @@ import (
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 // ---------------------------------------------------------------------------
@@ -132,7 +131,7 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 
 			// Fan-out: fetch checks, probes, datasource UID, and REST config in parallel.
 			var (
-				checks      []Check
+				checks       []Check
 				probeNameMap = map[int64]string{}
 				dsUID        string
 				restCfg      config.NamespacedRESTConfig
@@ -199,7 +198,7 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			var (
-				successMap   map[string]float64
+				successMap    map[string]float64
 				probeCountMap map[string]float64
 			)
 
@@ -442,19 +441,6 @@ func BuildTimelineQuery(job, instance string) (string, error) {
 // ---------------------------------------------------------------------------
 // Metric fetching helpers
 // ---------------------------------------------------------------------------
-
-// queryInstant executes an instant PromQL query and returns the first float64 value.
-// Returns nil on error (graceful degradation).
-func queryInstant(ctx context.Context, client *prometheus.Client, dsUID, query string) *float64 {
-	resp, err := client.Query(ctx, dsUID, prometheus.QueryRequest{Query: query})
-	if err != nil {
-		return nil
-	}
-	if resp.Status != "success" || len(resp.Data.Result) == 0 {
-		return nil
-	}
-	return parseSampleValue(resp.Data.Result[0])
-}
 
 // queryInstantByJobInstance executes a multi-series instant query and returns a map
 // keyed by "job/instance" containing the scalar value for each series.

@@ -11,8 +11,6 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"golang.org/x/sync/errgroup"
-
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/graph"
@@ -20,6 +18,7 @@ import (
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 const uuidLabel = "grafana_slo_uuid"
@@ -260,7 +259,6 @@ func FetchMetrics(ctx context.Context, client *prometheus.Client, slos []Slo) ma
 
 		g, gCtx := errgroup.WithContext(ctx)
 		for _, spec := range specs {
-			spec := spec
 			g.Go(func() error {
 				resp := queryMetric(gCtx, client, dsUID, spec.query)
 				if resp == nil {
@@ -332,29 +330,6 @@ func BuildBurnRateQuery(uuidRegex string) (string, error) {
 		return "", err
 	}
 	return expr.String(), nil
-}
-
-// mergeQuery executes a raw PromQL query and merges its values into the result map.
-func mergeQuery(
-	ctx context.Context, client *prometheus.Client,
-	dsUID, query string,
-	result map[string]MetricData,
-	setter func(m *MetricData, val *float64),
-) {
-	resp := queryMetric(ctx, client, dsUID, query)
-	if resp == nil {
-		return
-	}
-
-	for _, sample := range resp.Data.Result {
-		uuid := sample.Metric["grafana_slo_uuid"]
-		val := parseSampleValue(sample)
-		if val != nil {
-			m := result[uuid]
-			setter(&m, val)
-			result[uuid] = m
-		}
-	}
 }
 
 // queryMetric executes an instant PromQL query and returns the response.

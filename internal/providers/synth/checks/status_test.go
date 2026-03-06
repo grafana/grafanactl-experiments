@@ -184,8 +184,6 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 		if !strings.Contains(output, "--") {
 			t.Errorf("missing -- for nil success in:\n%s", output)
 		}
-
-
 	})
 
 	t.Run("wide output", func(t *testing.T) {

@@ -1,7 +1,7 @@
 ---
 type: feature-spec
 title: "Agent Mode Foundation"
-status: approved
+status: done
 beads_id: grafanactl-experiments-pt8
 created: 2026-03-06
 ---

@@ -54,13 +54,13 @@
          |            | - Processing   |
          |            +----------------+
          |
-         |            +----------------+  +----------------+  +----------------+
-         |            | Provider Layer |  | Query Layer    |  | SLO Layer      |
-         |            | (internal/     |  | (internal/     |  | (internal/providers/slo/ |
-         |            |  providers/)   |  |  query/)       |  | - Definitions  |
-         |            | - Provider     |  | - Prometheus   |  | - Reports      |
-         |            |   interface    |  |   client       |  | - Provider     |
-         |            | - Registry     |  | - Loki client  |  |   registration |
+         |            +----------------+  +----------------+  +-------------------------+
+         |            | Provider Layer |  | Query Layer    |  | Provider Implementations |
+         |            | (internal/     |  | (internal/     |  | (internal/providers/*/)   |
+         |            |  providers/)   |  |  query/)       |  | - SLO (definitions,      |
+         |            | - Provider     |  | - Prometheus   |  |   reports)               |
+         |            |   interface    |  |   client       |  | - Alert (rules, groups)  |
+         |            | - Registry     |  | - Loki client  |  | - Provider registration  |
          |            | - Secret       |  | - Direct HTTP  |  +----------------+
          |            |   redaction    |  |   (no k8s      |
          |            +----------------+  |    machinery)  |
@@ -629,6 +629,8 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/registry.go` | `All()` — compile-time provider registry |
 | `internal/providers/redact.go` | `RedactSecrets()` — secure-by-default secret redaction |
 | `cmd/grafanactl/providers/command.go` | `providers` command (list registered providers) |
+| `internal/providers/configloader.go` | Shared `ConfigLoader` — binds `--config`/`--context` flags and loads REST config for all providers |
+| `internal/providers/alert/` | Alert provider — rules and groups management via the Prometheus-compatible alerting API |
 
 ### SLO Provider
 

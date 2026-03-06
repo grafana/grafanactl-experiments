@@ -31,7 +31,7 @@ type groupsListOpts struct {
 }
 
 func (o *groupsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &groupsTableCodec{})
+	o.IO.RegisterCustomCodec("table", &GroupsTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -74,11 +74,12 @@ func newGroupsListCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type groupsTableCodec struct{}
+// GroupsTableCodec renders alert rule groups as a tabular table.
+type GroupsTableCodec struct{}
 
-func (c *groupsTableCodec) Format() format.Format { return "table" }
+func (c *GroupsTableCodec) Format() format.Format { return "table" }
 
-func (c *groupsTableCodec) Encode(w io.Writer, v any) error {
+func (c *GroupsTableCodec) Encode(w io.Writer, v any) error {
 	groups, ok := v.([]RuleGroup)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []RuleGroup")
@@ -94,7 +95,7 @@ func (c *groupsTableCodec) Encode(w io.Writer, v any) error {
 	return tw.Flush()
 }
 
-func (c *groupsTableCodec) Decode(r io.Reader, v any) error {
+func (c *GroupsTableCodec) Decode(r io.Reader, v any) error {
 	return errors.New("table format does not support decoding")
 }
 
@@ -103,7 +104,7 @@ type groupsGetOpts struct {
 }
 
 func (o *groupsGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &groupRulesTableCodec{})
+	o.IO.RegisterCustomCodec("table", &GroupRulesTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -150,12 +151,12 @@ func newGroupsGetCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// groupRulesTableCodec renders a group's rules as a table.
-type groupRulesTableCodec struct{}
+// GroupRulesTableCodec renders a group's rules as a table.
+type GroupRulesTableCodec struct{}
 
-func (c *groupRulesTableCodec) Format() format.Format { return "table" }
+func (c *GroupRulesTableCodec) Format() format.Format { return "table" }
 
-func (c *groupRulesTableCodec) Encode(w io.Writer, v any) error {
+func (c *GroupRulesTableCodec) Encode(w io.Writer, v any) error {
 	group, ok := v.(*RuleGroup)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *RuleGroup")
@@ -175,7 +176,7 @@ func (c *groupRulesTableCodec) Encode(w io.Writer, v any) error {
 	return tw.Flush()
 }
 
-func (c *groupRulesTableCodec) Decode(r io.Reader, v any) error {
+func (c *GroupRulesTableCodec) Decode(r io.Reader, v any) error {
 	return errors.New("table format does not support decoding")
 }
 
@@ -184,7 +185,7 @@ type groupsStatusOpts struct {
 }
 
 func (o *groupsStatusOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &groupsStatusTableCodec{})
+	o.IO.RegisterCustomCodec("table", &GroupsStatusTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -242,11 +243,12 @@ func newGroupsStatusCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type groupsStatusTableCodec struct{}
+// GroupsStatusTableCodec renders alert rule group status summaries as a tabular table.
+type GroupsStatusTableCodec struct{}
 
-func (c *groupsStatusTableCodec) Format() format.Format { return "table" }
+func (c *GroupsStatusTableCodec) Format() format.Format { return "table" }
 
-func (c *groupsStatusTableCodec) Encode(w io.Writer, v any) error {
+func (c *GroupsStatusTableCodec) Encode(w io.Writer, v any) error {
 	groups, ok := v.([]RuleGroup)
 	if !ok {
 		return errors.New("invalid data type for status table codec: expected []RuleGroup")
@@ -259,11 +261,13 @@ func (c *groupsStatusTableCodec) Encode(w io.Writer, v any) error {
 		firing, pending, inactive := 0, 0, 0
 		for _, r := range g.Rules {
 			switch r.State {
-			case "firing":
+			case StateFiring:
 				firing++
-			case "pending":
+			case StatePending:
 				pending++
 			default:
+				// The Grafana alerting API only returns firing/pending/inactive.
+				// Treat anything else as inactive.
 				inactive++
 			}
 		}
@@ -278,6 +282,6 @@ func (c *groupsStatusTableCodec) Encode(w io.Writer, v any) error {
 	return tw.Flush()
 }
 
-func (c *groupsStatusTableCodec) Decode(r io.Reader, v any) error {
+func (c *GroupsStatusTableCodec) Decode(r io.Reader, v any) error {
 	return errors.New("status table codec does not support decoding")
 }

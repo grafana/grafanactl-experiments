@@ -1,4 +1,4 @@
-package alert
+package providers
 
 import (
 	"context"
@@ -8,63 +8,31 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-// AlertProvider manages Grafana alerting resources.
-type AlertProvider struct{}
-
-// Name returns the unique identifier for this provider.
-func (p *AlertProvider) Name() string { return "alert" }
-
-// ShortDesc returns a one-line description of the provider.
-func (p *AlertProvider) ShortDesc() string { return "Manage Grafana alerting resources." }
-
-// Commands returns the Cobra commands contributed by this provider.
-func (p *AlertProvider) Commands() []*cobra.Command {
-	loader := &configLoader{}
-
-	alertCmd := &cobra.Command{
-		Use:   "alert",
-		Short: p.ShortDesc(),
-	}
-
-	loader.bindFlags(alertCmd.PersistentFlags())
-
-	alertCmd.AddCommand(rulesCommands(loader))
-	alertCmd.AddCommand(groupsCommands(loader))
-
-	return []*cobra.Command{alertCmd}
-}
-
-// Validate checks that the given provider configuration is valid.
-func (p *AlertProvider) Validate(cfg map[string]string) error {
-	return nil
-}
-
-// ConfigKeys returns the configuration keys used by this provider.
-func (p *AlertProvider) ConfigKeys() []providers.ConfigKey {
-	return nil
-}
-
-// configLoader loads REST config for alert commands.
-type configLoader struct {
+// ConfigLoader is a minimal config loading helper shared across providers.
+// It avoids importing cmd/grafanactl/config (which would create an import cycle
+// via internal/providers).
+type ConfigLoader struct {
 	configFile string
 	ctxName    string
 }
 
-func (l *configLoader) bindFlags(flags *pflag.FlagSet) {
+// BindFlags registers --config and --context flags on the given flag set.
+func (l *ConfigLoader) BindFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&l.configFile, "config", "", "Path to the configuration file to use")
 	flags.StringVar(&l.ctxName, "context", "", "Name of the context to use")
 }
 
-// LoadRESTConfig loads the REST config from the config file.
-func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
+// LoadRESTConfig loads the REST config from the config file, applying
+// env var overrides and context flags. It mirrors the logic in
+// cmd/grafanactl/config.Options.LoadRESTConfig.
+func (l *ConfigLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
 	source := l.configSource()
 
 	overrides := []config.Override{
+		// Apply env vars into the current context.
 		func(cfg *config.Config) error {
 			if cfg.CurrentContext == "" {
 				cfg.CurrentContext = config.DefaultContextName
@@ -83,6 +51,7 @@ func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRES
 				return err
 			}
 
+			// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables.
 			const providerEnvPrefix = "GRAFANA_PROVIDER_"
 			for _, envVar := range os.Environ() {
 				parts := strings.SplitN(envVar, "=", 2)
@@ -117,6 +86,7 @@ func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRES
 		},
 	}
 
+	// Apply context flag override.
 	if l.ctxName != "" {
 		overrides = append(overrides, func(cfg *config.Config) error {
 			if !cfg.HasContext(l.ctxName) {
@@ -127,6 +97,7 @@ func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRES
 		})
 	}
 
+	// Validate after loading.
 	overrides = append(overrides, func(cfg *config.Config) error {
 		if !cfg.HasContext(cfg.CurrentContext) {
 			return config.ContextNotFound(cfg.CurrentContext)
@@ -146,7 +117,7 @@ func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRES
 	return loaded.GetCurrentContext().ToRESTConfig(ctx), nil
 }
 
-func (l *configLoader) configSource() config.Source {
+func (l *ConfigLoader) configSource() config.Source {
 	if l.configFile != "" {
 		return config.ExplicitConfigFile(l.configFile)
 	}

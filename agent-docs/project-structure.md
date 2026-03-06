@@ -25,14 +25,16 @@ grafanactl/
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
 │   ├── logs/                 # slog + k8s klog integration, verbosity
-│   ├── providers/            # Provider plugin system (Prometheus, Loki providers)
+│   ├── providers/            # Provider plugin system
+│   │   ├── configloader.go   # Shared ConfigLoader for all providers
+│   │   ├── alert/            # Alert provider (rules and groups)
+│   │   └── slo/              # SLO provider implementation
+│   │       ├── definitions/  # SLO definitions and status queries
+│   │       └── reports/      # SLO reports
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   └── loki/             # Loki HTTP client (log + metric queries)
 │   ├── secrets/              # Redaction of sensitive config fields
-│   ├── slo/                  # SLO provider implementation
-│   │   ├── definitions/      # SLO definitions and status queries
-│   │   └── reports/          # SLO reports
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
 │   │   ├── discovery/        # API discovery: registry, index, preferred versions

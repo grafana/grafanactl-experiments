@@ -2,25 +2,8 @@
 
 List alert rule groups.
 
-### Synopsis
-
-List all alert rule groups configured in Grafana.
-
 ```
 grafanactl alert groups list [flags]
-```
-
-### Examples
-
-```
-	# List all alert rule groups
-	grafanactl alert groups list
-
-	# Output as JSON
-	grafanactl alert groups list -o json
-
-	# Output as YAML
-	grafanactl alert groups list -o yaml
 ```
 
 ### Options
@@ -41,5 +24,5 @@ grafanactl alert groups list [flags]
 
 ### SEE ALSO
 
-* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups
+* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups.
 

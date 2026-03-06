@@ -92,8 +92,8 @@ operations plus optional product-specific commands.
 
 ```
 grafanactl {provider}           [contributed by Provider.Commands()]
-├── --config                    [persistent: inherited via configLoader]
-├── --context                   [persistent: inherited via configLoader]
+├── --config                    [persistent: inherited via providers.ConfigLoader]
+├── --context                   [persistent: inherited via providers.ConfigLoader]
 │
 ├── {resource-type}             [one group per resource type]
 │   ├── list                    [always: list all resources]
@@ -130,23 +130,17 @@ grafanactl slo                  [internal/providers/slo/provider.go]
 ### Config loading pattern
 
 Provider commands cannot import `cmd/grafanactl/config` (import cycle). Instead,
-they use a lightweight `configLoader` that binds `--config` and `--context` flags
-independently. See `internal/providers/slo/provider.go` for the reference implementation.
+they use a shared, exported `providers.ConfigLoader` that binds `--config` and `--context` flags
+independently. See `internal/providers/configloader.go` for the reference implementation.
 
 ```go
-type configLoader struct {
-    configFile string
-    ctxName    string
-}
+// Shared across all providers — defined in internal/providers/configloader.go
+loader := &providers.ConfigLoader{}
+loader.BindFlags(sloCmd.PersistentFlags())  // --config, --context flags
 
-func (l *configLoader) bindFlags(flags *pflag.FlagSet) {
-    flags.StringVar(&l.configFile, "config", "", "Path to the configuration file to use")
-    flags.StringVar(&l.ctxName, "context", "", "Name of the context to use")
-}
-
-func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
+func (l *ConfigLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
     // Applies env vars (GRAFANA_TOKEN, GRAFANA_PROVIDER_*), context flag,
-    // and validates. See internal/providers/slo/provider.go for the full implementation.
+    // and validates. See internal/providers/configloader.go for the full implementation.
 }
 ```
 

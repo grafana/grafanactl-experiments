@@ -2,10 +2,6 @@
 
 Manage Grafana alerting resources.
 
-### Synopsis
-
-Manage Grafana alerting resources including alert rules and rule groups.
-
 ### Options
 
 ```
@@ -23,7 +19,7 @@ Manage Grafana alerting resources including alert rules and rule groups.
 
 ### SEE ALSO
 
-* [grafanactl](grafanactl.md)	 -
-* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups
-* [grafanactl alert rules](grafanactl_alert_rules.md)	 - Manage alert rules
+* [grafanactl](grafanactl.md)	 - 
+* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups.
+* [grafanactl alert rules](grafanactl_alert_rules.md)	 - Manage alert rules.
 

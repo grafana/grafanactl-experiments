@@ -96,9 +96,6 @@ grafanactl-claude-plugin/
 +-- .claude-plugin/
 |   +-- plugin.json                    # Plugin manifest
 |
-+-- commands/
-|   +-- grafanactl.md                  # /grafanactl slash command (entry point)
-|
 +-- agents/
 |   +-- grafana-debugger.md            # Specialist agent: diagnose issues via Grafana data
 |
@@ -165,47 +162,12 @@ grafanactl-claude-plugin/
 Key design decisions:
 
 - **No `mcpServers` key.**[1] The plugin does not bundle an MCP server. Agents use the Bash tool to invoke grafanactl.
+- **No `commands/` directory.**[1] Skills auto-trigger by description matching; no entry-point slash command needed.
 - **No `hooks` key for MVP.**[1] Hooks could be added later (e.g., PostToolUse to auto-format JSON output, or SessionStart to verify grafanactl is installed).
 - **Five skills, not one mega-skill.**[1] Each skill has a focused `description` so Claude auto-triggers the right one based on user intent. This avoids loading 1,300 lines of context when the user only needs datasource discovery.
 - **One specialist agent.**[1] The `grafana-debugger` agent is a subagent that Claude can delegate to for complex multi-step diagnosis workflows.
 
 ### Component Details
-
-#### Slash Command: `/grafanactl`
-
-```markdown
----
-name: grafanactl
----
-
-# grafanactl — Manage Grafana from the CLI
-
-grafanactl is a kubectl-style CLI for managing Grafana 12+ resources.
-
-## Quick Reference
-
-| Task | Skill |
-|------|-------|
-| Debug an application issue | /grafanactl:debug-with-grafana |
-| Explore what data exists | /grafanactl:explore-datasources |
-| Manage dashboards as code | /grafanactl:manage-dashboards |
-| Monitor SLOs | /grafanactl:monitor-slos |
-| Set up grafanactl | /grafanactl:setup-grafanactl |
-
-## Prerequisites
-
-- grafanactl binary installed and on PATH
-- At least one Grafana context configured (see /grafanactl:setup-grafanactl)
-
-## Verify Installation
-
-```bash
-grafanactl version
-grafanactl config check
-```
-```
-
-This slash command acts as a lightweight entry point and router.[1] It does not load heavy reference material.
 
 #### Agent: `grafana-debugger`
 
@@ -628,7 +590,6 @@ This is speculative regarding timeline and organizational buy-in. The plugin can
 | Component | Content | Status |
 |-----------|---------|--------|
 | `plugin.json` | Manifest with name, version, description, keywords | New |
-| `commands/grafanactl.md` | Entry point slash command with skill router | New |
 | `agents/grafana-debugger.md` | Specialist debugging agent | New |
 | `skills/setup-grafanactl/` | Config bootstrapping (Cloud, on-prem, env vars) | New (from agent-docs/config-system.md) |
 | `skills/explore-datasources/` | Datasource discovery | Adapted from existing discover-datasources skill |
@@ -665,7 +626,7 @@ This is speculative regarding timeline and organizational buy-in. The plugin can
 | Adapt manage-dashboards skill | 0.5 day | Combine existing + corrections |
 | Write monitor-slos skill | 0.5 day | Entirely new |
 | Write grafana-debugger agent | 0.25 day | Short system prompt |
-| Write plugin.json + commands + structure | 0.25 day | Boilerplate |
+| Write plugin.json + structure | 0.25 day | Boilerplate |
 | Test plugin end-to-end | 0.5 day | Install, verify auto-triggering, run workflows |
 | Set up distribution (marketplace repo) | 0.25 day | GitHub repo + marketplace.json |
 | **Total** | **4-5 days** | |

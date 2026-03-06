@@ -108,7 +108,9 @@ func collectStreamLabelNames(streams []StreamEntry) []string {
 	nameSet := make(map[string]struct{})
 	for _, stream := range streams {
 		for name := range stream.Stream {
-			nameSet[name] = struct{}{}
+			if !isHiddenLabel(name) {
+				nameSet[name] = struct{}{}
+			}
 		}
 	}
 
@@ -119,6 +121,15 @@ func collectStreamLabelNames(streams []StreamEntry) []string {
 	sort.Strings(names)
 
 	return names
+}
+
+func isHiddenLabel(name string) bool {
+	switch name {
+	case "__adaptive_logs_sampled__", "debug", "pod_template_hash":
+		return true
+	default:
+		return false
+	}
 }
 
 func collectLabelNames(series []map[string]string) []string {

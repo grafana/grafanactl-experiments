@@ -139,12 +139,7 @@ grafana_slo_sli_window metrics.`,
 
 			points := FetchMetricsRange(ctx, promClient, slos, start, end, step)
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), SLITrendPayload{
+			return opts.IO.Encode(cmd.OutOrStdout(), SLITrendPayload{
 				SLOs:   slos,
 				Points: points,
 				Start:  start,

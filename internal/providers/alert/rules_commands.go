@@ -28,7 +28,6 @@ func rulesCommands(loader RESTConfigLoader) *cobra.Command {
 	cmd.AddCommand(
 		newRulesListCommand(loader),
 		newRulesGetCommand(loader),
-		newRulesStatusCommand(loader),
 	)
 	return cmd
 }
@@ -37,16 +36,17 @@ type rulesListOpts struct {
 	IO        cmdio.Options
 	GroupName string
 	FolderUID string
-	Status    string
+	State     string
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &rulesTableCodec{})
+	o.IO.RegisterCustomCodec("table", &RulesTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &RulesTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.GroupName, "group", "", "Filter by group name")
 	flags.StringVar(&o.FolderUID, "folder", "", "Filter by folder UID")
-	flags.StringVar(&o.Status, "status", "", "Filter by rule state (firing, pending, inactive)")
+	flags.StringVar(&o.State, "state", "", "Filter by rule state (firing, pending, inactive)")
 }
 
 func newRulesListCommand(loader RESTConfigLoader) *cobra.Command {
@@ -57,6 +57,13 @@ func newRulesListCommand(loader RESTConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
+			}
+
+			if opts.State != "" {
+				validStates := map[string]bool{StateFiring: true, StatePending: true, StateInactive: true}
+				if !validStates[opts.State] {
+					return fmt.Errorf("invalid state %q: must be one of firing, pending, inactive", opts.State)
+				}
 			}
 
 			ctx := cmd.Context()
@@ -83,11 +90,11 @@ func newRulesListCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			if codec.Format() == "table" {
+			if codec.Format() == "table" || codec.Format() == "wide" {
 				var rules []RuleStatus
 				for _, g := range resp.Data.Groups {
 					for _, r := range g.Rules {
-						if opts.Status == "" || r.State == opts.Status {
+						if opts.State == "" || r.State == opts.State {
 							rules = append(rules, r)
 						}
 					}
@@ -95,11 +102,11 @@ func newRulesListCommand(loader RESTConfigLoader) *cobra.Command {
 				return codec.Encode(cmd.OutOrStdout(), rules)
 			}
 
-			if opts.Status != "" {
+			if opts.State != "" {
 				for i := range resp.Data.Groups {
 					var filtered []RuleStatus
 					for _, r := range resp.Data.Groups[i].Rules {
-						if r.State == opts.Status {
+						if r.State == opts.State {
 							filtered = append(filtered, r)
 						}
 					}
@@ -107,38 +114,69 @@ func newRulesListCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 			}
 
-			return codec.Encode(cmd.OutOrStdout(), resp.Data.Groups)
+			// Filter out groups with no rules to avoid empty groups in JSON/YAML output.
+			var nonEmpty []RuleGroup
+			for _, g := range resp.Data.Groups {
+				if len(g.Rules) > 0 {
+					nonEmpty = append(nonEmpty, g)
+				}
+			}
+			return codec.Encode(cmd.OutOrStdout(), nonEmpty)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
-type rulesTableCodec struct{}
+// RulesTableCodec renders alert rules as a tabular table.
+type RulesTableCodec struct {
+	Wide bool
+}
 
-func (c *rulesTableCodec) Format() format.Format { return "table" }
+func (c *RulesTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
 
-func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
+func (c *RulesTableCodec) Encode(w io.Writer, v any) error {
 	rules, ok := v.([]RuleStatus)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []RuleStatus")
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tPAUSED")
+
+	if c.Wide {
+		fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tLAST_EVAL\tEVAL_TIME\tPAUSED\tFOLDER")
+	} else {
+		fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tPAUSED")
+	}
 
 	for _, r := range rules {
 		paused := "no"
 		if r.IsPaused {
 			paused = "yes"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.UID, r.Name, r.State, r.Health, paused)
+
+		if c.Wide {
+			lastEval := r.LastEvaluation
+			if lastEval == "0001-01-01T00:00:00Z" {
+				lastEval = "never"
+			}
+			evalTime := fmt.Sprintf("%.3fs", r.EvaluationTime)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				r.UID, r.Name, r.State, r.Health, lastEval, evalTime, paused, r.FolderUID)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.UID, r.Name, r.State, r.Health, paused)
+		}
 	}
 
 	return tw.Flush()
 }
 
-func (c *rulesTableCodec) Decode(r io.Reader, v any) error {
+func (c *RulesTableCodec) Decode(r io.Reader, v any) error {
 	return errors.New("table format does not support decoding")
 }
 
@@ -147,7 +185,7 @@ type rulesGetOpts struct {
 }
 
 func (o *rulesGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ruleDetailTableCodec{})
+	o.IO.RegisterCustomCodec("table", &RuleDetailTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -194,12 +232,12 @@ func newRulesGetCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// ruleDetailTableCodec renders a single rule as a table row.
-type ruleDetailTableCodec struct{}
+// RuleDetailTableCodec renders a single rule as a table row.
+type RuleDetailTableCodec struct{}
 
-func (c *ruleDetailTableCodec) Format() format.Format { return "table" }
+func (c *RuleDetailTableCodec) Format() format.Format { return "table" }
 
-func (c *ruleDetailTableCodec) Encode(w io.Writer, v any) error {
+func (c *RuleDetailTableCodec) Encode(w io.Writer, v any) error {
 	rule, ok := v.(*RuleStatus)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *RuleStatus")
@@ -217,125 +255,6 @@ func (c *ruleDetailTableCodec) Encode(w io.Writer, v any) error {
 	return tw.Flush()
 }
 
-func (c *ruleDetailTableCodec) Decode(r io.Reader, v any) error {
+func (c *RuleDetailTableCodec) Decode(r io.Reader, v any) error {
 	return errors.New("table format does not support decoding")
-}
-
-type rulesStatusOpts struct {
-	IO cmdio.Options
-}
-
-func (o *rulesStatusOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &rulesStatusTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &rulesStatusTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-}
-
-func newRulesStatusCommand(loader RESTConfigLoader) *cobra.Command {
-	opts := &rulesStatusOpts{}
-	cmd := &cobra.Command{
-		Use:   "status [UID]",
-		Short: "Show alert rule status.",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-			restCfg, err := loader.LoadRESTConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
-			if err != nil {
-				return err
-			}
-
-			var rules []RuleStatus
-			if len(args) == 1 {
-				rule, err := client.GetRule(ctx, args[0])
-				if err != nil {
-					return err
-				}
-				rules = []RuleStatus{*rule}
-			} else {
-				resp, err := client.List(ctx, ListOptions{})
-				if err != nil {
-					return err
-				}
-				for _, g := range resp.Data.Groups {
-					rules = append(rules, g.Rules...)
-				}
-			}
-
-			if len(rules) == 0 {
-				cmdio.Info(cmd.OutOrStdout(), "No alert rules found.")
-				return nil
-			}
-
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), rules)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-type rulesStatusTableCodec struct {
-	Wide bool
-}
-
-func (c *rulesStatusTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *rulesStatusTableCodec) Encode(w io.Writer, v any) error {
-	rules, ok := v.([]RuleStatus)
-	if !ok {
-		return errors.New("invalid data type for status table codec: expected []RuleStatus")
-	}
-
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
-	if c.Wide {
-		fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tLAST_EVAL\tEVAL_TIME\tPAUSED\tFOLDER")
-	} else {
-		fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tLAST_EVAL\tPAUSED")
-	}
-
-	for _, r := range rules {
-		paused := "no"
-		if r.IsPaused {
-			paused = "yes"
-		}
-		lastEval := r.LastEvaluation
-		if lastEval == "0001-01-01T00:00:00Z" {
-			lastEval = "never"
-		}
-
-		if c.Wide {
-			evalTime := fmt.Sprintf("%.3fs", r.EvaluationTime)
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.UID, r.Name, r.State, r.Health, lastEval, evalTime, paused, r.FolderUID)
-		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.UID, r.Name, r.State, r.Health, lastEval, paused)
-		}
-	}
-
-	return tw.Flush()
-}
-
-func (c *rulesStatusTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("status table codec does not support decoding")
 }

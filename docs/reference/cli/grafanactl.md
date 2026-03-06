@@ -12,10 +12,11 @@
 
 ### SEE ALSO
 
-* [grafanactl alert](grafanactl_alert.md)	 - Manage Grafana alerting resources
+* [grafanactl alert](grafanactl_alert.md)	 - Manage Grafana alerting resources.
 * [grafanactl config](grafanactl_config.md)	 - View or manipulate configuration settings
 * [grafanactl datasources](grafanactl_datasources.md)	 - Manage Grafana datasources
 * [grafanactl dev](grafanactl_dev.md)	 - Manage Grafana resources as code
+* [grafanactl linter](grafanactl_linter.md)	 - Lint Grafana resources
 * [grafanactl providers](grafanactl_providers.md)	 - List registered providers
 * [grafanactl query](grafanactl_query.md)	 - Execute queries against Grafana datasources
 * [grafanactl resources](grafanactl_resources.md)	 - Manipulate Grafana resources

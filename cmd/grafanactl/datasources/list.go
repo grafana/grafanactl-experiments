@@ -118,16 +118,11 @@ type datasourceInfo struct {
 }
 
 func outputDatasources(cmd *cobra.Command, opts *listOpts, datasources []*datasourceInfo) error {
-	codec, err := opts.IO.Codec()
-	if err != nil {
-		return err
-	}
-
 	if opts.IO.OutputFormat == "table" {
-		return codec.Encode(cmd.OutOrStdout(), datasources)
+		return opts.IO.Encode(cmd.OutOrStdout(), datasources)
 	}
 
-	return codec.Encode(cmd.OutOrStdout(), map[string]any{"datasources": datasources})
+	return opts.IO.Encode(cmd.OutOrStdout(), map[string]any{"datasources": datasources})
 }
 
 type datasourceTableCodec struct{}

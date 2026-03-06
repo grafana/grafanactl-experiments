@@ -1,5 +1,17 @@
 package alert
 
+// Alert rule state constants. The Grafana alerting API only returns these three states.
+const (
+	StateFiring   = "firing"
+	StatePending  = "pending"
+	StateInactive = "inactive"
+)
+
+// ErrorResponse is the error response body returned by the alerting API.
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 // RulesResponse is the response from /api/prometheus/grafana/api/v1/rules.
 type RulesResponse struct {
 	Status string    `json:"status"`

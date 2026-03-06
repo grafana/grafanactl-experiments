@@ -155,12 +155,7 @@ metrics, and computes combined SLI and error budget per report.`,
 			// Build report-level status results.
 			results := BuildReportStatusResults(reports, sloIndex, sloResultIndex)
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), results)
+			return opts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
 	opts.setup(cmd.Flags())

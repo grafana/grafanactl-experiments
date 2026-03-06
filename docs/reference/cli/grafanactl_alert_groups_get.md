@@ -2,25 +2,8 @@
 
 Get a single alert rule group.
 
-### Synopsis
-
-Get detailed information about a specific alert rule group by its name, including all rules in the group.
-
 ```
 grafanactl alert groups get NAME [flags]
-```
-
-### Examples
-
-```
-	# Get alert rule group details
-	grafanactl alert groups get "High Priority Alerts"
-
-	# Output as JSON
-	grafanactl alert groups get "CPU Alerts" -o json
-
-	# Output as YAML
-	grafanactl alert groups get "Memory Alerts" -o yaml
 ```
 
 ### Options
@@ -41,5 +24,5 @@ grafanactl alert groups get NAME [flags]
 
 ### SEE ALSO
 
-* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups
+* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups.
 

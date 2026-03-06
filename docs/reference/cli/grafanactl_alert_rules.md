@@ -2,10 +2,6 @@
 
 Manage alert rules.
 
-### Synopsis
-
-List, get, and inspect alert rules configured in Grafana.
-
 ### Options
 
 ```
@@ -24,7 +20,6 @@ List, get, and inspect alert rules configured in Grafana.
 ### SEE ALSO
 
 * [grafanactl alert](grafanactl_alert.md)	 - Manage Grafana alerting resources.
-* [grafanactl alert rules get](grafanactl_alert_rules_get.md)	 - Get a single alert rule
-* [grafanactl alert rules list](grafanactl_alert_rules_list.md)	 - List alert rules
-* [grafanactl alert rules status](grafanactl_alert_rules_status.md)	 - Show alert rule status
+* [grafanactl alert rules get](grafanactl_alert_rules_get.md)	 - Get a single alert rule.
+* [grafanactl alert rules list](grafanactl_alert_rules_list.md)	 - List alert rules.
 

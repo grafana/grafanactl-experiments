@@ -1,6 +1,7 @@
 ---
-name: grafana-alert-investigator
-description: Investigate Grafana alerts to understand their cause, scope, and impact. Use this skill whenever the user asks about Grafana alerts, why an alert is firing, or wants to investigate alert behavior. Trigger on phrases like "investigate alert", "why is this alert firing", "grafana alert", "alert firing", or when users mention specific alert names.
+name: grafana-investigate-alert
+description: Use when the user asks about Grafana alerts — why an alert is firing, what it means, or its scope and impact. Trigger on phrases like "investigate alert", "why is this alert firing", "grafana alert", "alert firing", or when users mention specific alert names.
+allowed-tools: [grafanactl, Bash]
 ---
 
 # Grafana Alert Investigator
@@ -28,7 +29,7 @@ Check context if needed (`grafanactl config view`). If multiple contexts exist a
 
 Fetch the alert, by listing all alerts and filtering by name 
 ```bash
-grafanactl alert rules list -o json | jq -r '.[] | .rules[]? | select(.name == "CertManagerCertExpirySoon")
+grafanactl alert rules list -o json | jq -r '.[] | .rules[]? | select(.name == "CertManagerCertExpirySoon")'
 ```
 
 Filter by name, state, cluster/environment as relevant. If multiple matches, list them and ask which to investigate.
@@ -62,7 +63,7 @@ Analyze the results: What's the current value? Spike or gradual? When did it sta
 ### Step 4: Surface Resources and Provide Analysis
 
 Extract from annotations:
-- Runbook URLs (ALWAYS fetch with `gh api` if in GitHub)
+- Runbook URLs (if the URL is a GitHub URL and `gh` is available, fetch with `gh api`)
 - Dashboard links
 - Descriptions
 

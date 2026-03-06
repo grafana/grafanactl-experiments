@@ -2,25 +2,8 @@
 
 Show alert rule group status.
 
-### Synopsis
-
-Show the current status of alert rule groups including rule counts by state (firing, pending, inactive) and last evaluation time. If a name is provided, shows status for that specific group; otherwise shows status for all groups.
-
 ```
 grafanactl alert groups status [NAME] [flags]
-```
-
-### Examples
-
-```
-	# Show status for all alert rule groups
-	grafanactl alert groups status
-
-	# Show status for a specific group
-	grafanactl alert groups status "High Priority Alerts"
-
-	# Output as JSON
-	grafanactl alert groups status -o json
 ```
 
 ### Options
@@ -41,5 +24,5 @@ grafanactl alert groups status [NAME] [flags]
 
 ### SEE ALSO
 
-* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups
+* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups.
 

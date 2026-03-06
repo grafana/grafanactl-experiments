@@ -16,7 +16,8 @@ import (
 	"github.com/grafana/grafanactl/cmd/grafanactl/resources"
 	"github.com/grafana/grafanactl/internal/logs"
 	"github.com/grafana/grafanactl/internal/providers"
-	_ "github.com/grafana/grafanactl/internal/providers/slo" // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/grafanactl/internal/providers/slo"   // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/grafanactl/internal/providers/synth" // Provider registrations — blank imports trigger init() self-registration.
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 )

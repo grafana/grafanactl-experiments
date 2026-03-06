@@ -147,8 +147,9 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 					}
 					checks = []Check{*c}
 				} else {
-					checks, err = smClient.List(initCtx)
-					return err
+					var listErr error
+					checks, listErr = smClient.List(initCtx)
+					return listErr
 				}
 				return nil
 			})
@@ -644,8 +645,8 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 
 	cfg, err := loader.LoadConfig(ctx)
 	if err != nil {
-		return "", errors.New(
-			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
+		return "", fmt.Errorf(
+			"loading config: %w; use --datasource-uid flag or set default-prometheus-datasource in config", err)
 	}
 
 	curCtx := cfg.GetCurrentContext()
@@ -729,7 +730,7 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 		req.SetBasicAuth(grafanaCtx.Grafana.User, grafanaCtx.Grafana.Password)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
 		return "", err
 	}

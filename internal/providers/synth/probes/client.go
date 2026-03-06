@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 )
 
 // Client is an HTTP client for the Synthetic Monitoring probes API.
@@ -22,7 +24,7 @@ func NewClient(baseURL, token string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
 		token:      token,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -42,7 +44,7 @@ func (c *Client) List(ctx context.Context) ([]Probe, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, smcfg.HandleErrorResponse(resp)
 	}
 
 	var probeList []Probe
@@ -55,30 +57,4 @@ func (c *Client) List(ctx context.Context) ([]Probe, error) {
 	}
 
 	return probeList, nil
-}
-
-func handleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	var errResp struct {
-		Error string `json:"error"`
-		Msg   string `json:"msg"`
-	}
-	if err := json.Unmarshal(body, &errResp); err == nil {
-		if errResp.Error != "" {
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Error)
-		}
-		if errResp.Msg != "" {
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Msg)
-		}
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
 }

@@ -9,6 +9,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 )
 
 // ErrNotFound is returned when a requested check does not exist (HTTP 404).
@@ -27,7 +30,7 @@ func NewClient(baseURL, token string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
 		token:      token,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -40,7 +43,7 @@ func (c *Client) List(ctx context.Context) ([]Check, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, smcfg.HandleErrorResponse(resp)
 	}
 
 	var checks []Check
@@ -68,7 +71,7 @@ func (c *Client) Get(ctx context.Context, id int64) (*Check, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, smcfg.HandleErrorResponse(resp)
 	}
 
 	var check Check
@@ -93,7 +96,7 @@ func (c *Client) Create(ctx context.Context, check Check) (*Check, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, handleErrorResponse(resp)
+		return nil, smcfg.HandleErrorResponse(resp)
 	}
 
 	var created Check
@@ -118,7 +121,7 @@ func (c *Client) Update(ctx context.Context, check Check) (*Check, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, smcfg.HandleErrorResponse(resp)
 	}
 
 	var updated Check
@@ -138,7 +141,7 @@ func (c *Client) Delete(ctx context.Context, id int64) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return handleErrorResponse(resp)
+		return smcfg.HandleErrorResponse(resp)
 	}
 
 	return nil
@@ -153,7 +156,7 @@ func (c *Client) GetTenant(ctx context.Context) (*Tenant, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, smcfg.HandleErrorResponse(resp)
 	}
 
 	var tenant Tenant
@@ -173,7 +176,7 @@ func (c *Client) ListProbes(ctx context.Context) ([]ProbeRef, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, smcfg.HandleErrorResponse(resp)
 	}
 
 	var raw []struct {
@@ -209,30 +212,4 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	}
 
 	return resp, nil
-}
-
-func handleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	var errResp struct {
-		Error string `json:"error"`
-		Msg   string `json:"msg"`
-	}
-	if err := json.Unmarshal(body, &errResp); err == nil {
-		if errResp.Error != "" {
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Error)
-		}
-		if errResp.Msg != "" {
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Msg)
-		}
-	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
 }

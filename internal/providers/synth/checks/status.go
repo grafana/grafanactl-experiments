@@ -2,20 +2,25 @@ package checks
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
+	"net/http"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/grafana/grafana-app-sdk/logging"
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/grafana"
 	"github.com/grafana/grafanactl/internal/graph"
+	"github.com/grafana/grafanactl/internal/providers/synth/probes"
 	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 	"github.com/grafana/grafanactl/internal/query/prometheus"
 	"github.com/grafana/promql-builder/go/promql"
@@ -36,6 +41,7 @@ type CheckStatusResult struct {
 	Success     *float64 `json:"success,omitempty"`
 	ProbesUp    int      `json:"probesUp"`
 	ProbesTotal int      `json:"probesTotal"`
+	ProbeNames  []string `json:"probeNames,omitempty"`
 	Status      string   `json:"status"`
 }
 
@@ -70,6 +76,7 @@ type statusOpts struct {
 
 func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &StatusTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &StatusTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -135,6 +142,12 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				return nil
 			}
 
+			// Fetch probes for wide output (probe ID → display name).
+			probeNameMap := map[int64]string{}
+			if probeList, err := probes.NewClient(baseURL, token).List(ctx); err == nil {
+				probeNameMap = buildProbeNameMap(probeList)
+			}
+
 			// Resolve datasource UID.
 			dsUID, err := resolveDataSourceUID(ctx, opts.DatasourceUID, loader)
 			if err != nil {
@@ -174,7 +187,7 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				}
 			}
 
-			results := BuildCheckStatusResults(checks, successMap, probeCountMap)
+			results := BuildCheckStatusResults(checks, successMap, probeCountMap, probeNameMap)
 
 			codec, err := opts.IO.Codec()
 			if err != nil {
@@ -492,7 +505,9 @@ func parseMatrixValue(raw any) (float64, error) {
 // ---------------------------------------------------------------------------
 
 // BuildCheckStatusResults merges check definitions with metric data.
-func BuildCheckStatusResults(checks []Check, successMap, probeCountMap map[string]float64) []CheckStatusResult {
+// probeNames maps probe ID to display name (e.g. "Oregon" or "Paris (offline)").
+// Pass nil or an empty map if probe names are unavailable.
+func BuildCheckStatusResults(checks []Check, successMap, probeCountMap map[string]float64, probeNames map[int64]string) []CheckStatusResult {
 	results := make([]CheckStatusResult, 0, len(checks))
 
 	for _, c := range checks {
@@ -514,11 +529,31 @@ func BuildCheckStatusResults(checks []Check, successMap, probeCountMap map[strin
 			r.ProbesUp = int(cnt)
 		}
 
+		for _, pid := range c.Probes {
+			if name, ok := probeNames[pid]; ok {
+				r.ProbeNames = append(r.ProbeNames, name)
+			}
+		}
+
 		r.Status = computeCheckStatus(r.Success)
 		results = append(results, r)
 	}
 
 	return results
+}
+
+// buildProbeNameMap builds a probe ID → display name map.
+// Offline probes get a "(offline)" suffix.
+func buildProbeNameMap(ps []probes.Probe) map[int64]string {
+	m := make(map[int64]string, len(ps))
+	for _, p := range ps {
+		name := p.Name
+		if !p.Online {
+			name += " (offline)"
+		}
+		m[p.ID] = name
+	}
+	return m
 }
 
 // computeCheckStatus determines the display status for a check.
@@ -538,9 +573,9 @@ func computeCheckStatus(success *float64) string {
 
 // resolveDataSourceUID resolves the Prometheus datasource UID from:
 // 1. Explicit flag value (highest priority).
-// 2. Config default-prometheus-datasource.
-// 3. Auto-discover via Grafana API (if exactly one Prometheus datasource exists).
-// 4. Error with helpful message.
+// 2. Global config: contexts.<name>.default-prometheus-datasource.
+// 3. SM provider cache: providers.synth.sm-metrics-datasource-uid.
+// 4. Auto-discover via SM plugin settings — result saved to SM cache for next run.
 func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.StatusLoader) (string, error) {
 	if flagUID != "" {
 		return flagUID, nil
@@ -558,48 +593,107 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
 	}
 
-	// Try config default.
+	// Tier 2: global context default.
 	if uid := curCtx.DefaultPrometheusDatasource; uid != "" {
 		return uid, nil
 	}
 
-	// Auto-discover: query Grafana API for Prometheus datasources.
-	return discoverPrometheusDatasource(curCtx)
+	// Tier 3: SM provider cache.
+	if prov := curCtx.Providers["synth"]; prov != nil {
+		if uid := prov["sm-metrics-datasource-uid"]; uid != "" {
+			return uid, nil
+		}
+	}
+
+	// Tier 4: auto-discover via SM plugin settings, then cache for next run.
+	uid, err := discoverPrometheusDatasource(ctx, curCtx)
+	if err != nil {
+		return "", err
+	}
+
+	// Best-effort save — don't fail the command if writing config fails.
+	if saveErr := loader.SaveMetricsDatasourceUID(ctx, uid); saveErr != nil {
+		logging.FromContext(ctx).Warn("could not save discovered datasource UID to config", slog.String("error", saveErr.Error()))
+	}
+
+	return uid, nil
 }
 
-// discoverPrometheusDatasource queries the Grafana API to find Prometheus datasources.
-// Returns the UID if exactly one exists, an error describing the situation otherwise.
-func discoverPrometheusDatasource(curCtx *config.Context) (string, error) {
+// discoverPrometheusDatasource queries the Grafana SM plugin settings to find the
+// Prometheus datasource configured for Synthetic Monitoring metrics.
+func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context) (string, error) {
 	gClient, err := grafana.ClientFromContext(curCtx)
 	if err != nil {
 		return "", errors.New(
 			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
 	}
 
-	resp, err := gClient.Datasources.GetDataSources()
+	// Query SM plugin settings for the metrics datasource name.
+	dsName, err := smMetricsDatasourceName(ctx, curCtx)
 	if err != nil {
-		return "", errors.New(
-			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
-	}
-
-	var promUIDs []string
-	for _, ds := range resp.Payload {
-		if strings.EqualFold(ds.Type, "prometheus") {
-			promUIDs = append(promUIDs, ds.UID)
-		}
-	}
-
-	switch len(promUIDs) {
-	case 1:
-		return promUIDs[0], nil
-	case 0:
-		return "", errors.New(
-			"no Prometheus datasources found; configure one in Grafana first")
-	default:
 		return "", fmt.Errorf(
-			"multiple Prometheus datasources found (%s); specify one with --datasource-uid or set default-prometheus-datasource in config",
-			strings.Join(promUIDs, ", "))
+			"could not auto-discover SM metrics datasource: %w; use --datasource-uid or set default-prometheus-datasource in config",
+			err)
 	}
+
+	// Resolve name → UID.
+	resp, err := gClient.Datasources.GetDataSourceByName(dsName)
+	if err != nil {
+		return "", fmt.Errorf(
+			"SM metrics datasource %q not found in Grafana: %w; use --datasource-uid or set default-prometheus-datasource in config",
+			dsName, err)
+	}
+
+	return resp.Payload.UID, nil
+}
+
+// smMetricsDatasourceName queries the grafana-synthetic-monitoring-app plugin settings
+// and returns the configured metrics datasource name (jsonData.metrics.grafanaName).
+func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (string, error) {
+	if grafanaCtx.Grafana == nil {
+		return "", errors.New("grafana not configured in context")
+	}
+
+	url := strings.TrimRight(grafanaCtx.Grafana.Server, "/") +
+		"/api/plugins/grafana-synthetic-monitoring-app/settings"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	if grafanaCtx.Grafana.APIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+grafanaCtx.Grafana.APIToken)
+	} else if grafanaCtx.Grafana.User != "" {
+		req.SetBasicAuth(grafanaCtx.Grafana.User, grafanaCtx.Grafana.Password)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("plugin settings returned HTTP %d", resp.StatusCode)
+	}
+
+	var body struct {
+		JSONData struct {
+			Metrics struct {
+				GrafanaName string `json:"grafanaName"`
+			} `json:"metrics"`
+		} `json:"jsonData"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", err
+	}
+
+	if body.JSONData.Metrics.GrafanaName == "" {
+		return "", errors.New("metrics datasource not configured in SM plugin settings")
+	}
+
+	return body.JSONData.Metrics.GrafanaName, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -646,9 +740,16 @@ func autoStep(start, end time.Time) time.Duration {
 // Status table codec
 // ---------------------------------------------------------------------------
 
-type StatusTableCodec struct{}
+type StatusTableCodec struct {
+	Wide bool
+}
 
-func (c *StatusTableCodec) Format() format.Format { return "table" }
+func (c *StatusTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
 
 func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 	results, ok := v.([]CheckStatusResult)
@@ -657,7 +758,12 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tSTATUS")
+
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tPROBES\tSTATUS")
+	} else {
+		fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tSTATUS")
+	}
 
 	for _, r := range results {
 		successStr := "--"
@@ -665,8 +771,14 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 			successStr = fmt.Sprintf("%.2f%%", *r.Success*100)
 		}
 
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n",
-			r.ID, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, r.Status)
+		if c.Wide {
+			probesStr := strings.Join(r.ProbeNames, ", ")
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
+				r.ID, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, probesStr, r.Status)
+		} else {
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n",
+				r.ID, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, r.Status)
+		}
 	}
 
 	return tw.Flush()

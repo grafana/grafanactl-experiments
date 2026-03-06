@@ -65,6 +65,7 @@ func (p *SynthProvider) ConfigKeys() []providers.ConfigKey {
 	return []providers.ConfigKey{
 		{Name: "sm-url", Secret: false},
 		{Name: "sm-token", Secret: true},
+		{Name: "sm-metrics-datasource-uid", Secret: false},
 	}
 }
 
@@ -178,6 +179,36 @@ func (l *configLoader) LoadConfig(ctx context.Context) (*config.Config, error) {
 	}
 
 	return &loaded, nil
+}
+
+// SaveMetricsDatasourceUID persists an auto-discovered Prometheus datasource UID to
+// providers.synth.sm-metrics-datasource-uid in the config file.
+func (l *configLoader) SaveMetricsDatasourceUID(ctx context.Context, uid string) error {
+	loaded, err := l.loadConfig(ctx, func(cfg *config.Config) error {
+		if !cfg.HasContext(cfg.CurrentContext) {
+			return config.ContextNotFound(cfg.CurrentContext)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	curCtx := loaded.GetCurrentContext()
+	if curCtx == nil {
+		return fmt.Errorf("context %q not found", loaded.CurrentContext)
+	}
+
+	if curCtx.Providers == nil {
+		curCtx.Providers = make(map[string]map[string]string)
+	}
+	if curCtx.Providers["synth"] == nil {
+		curCtx.Providers["synth"] = make(map[string]string)
+	}
+	curCtx.Providers["synth"]["sm-metrics-datasource-uid"] = uid
+	loaded.SetContext(loaded.CurrentContext, false, *curCtx)
+
+	return config.Write(ctx, l.configSource(), loaded)
 }
 
 // loadConfig is the shared config-loading implementation.

@@ -64,9 +64,17 @@ func (s CheckSettings) CheckType() string {
 	return "unknown"
 }
 
+// TenantRemote holds the remote write/query target configuration for a tenant.
+type TenantRemote struct {
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Username string `json:"username"`
+}
+
 // Tenant holds the SM tenant info needed for push operations.
 type Tenant struct {
-	ID int64 `json:"id"`
+	ID            int64        `json:"id"`
+	MetricsRemote TenantRemote `json:"metricsRemote"`
 }
 
 // CheckDeleteResponse is returned by DELETE /api/v1/check/delete/{id}.

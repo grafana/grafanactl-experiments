@@ -177,6 +177,47 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 		if !strings.Contains(output, "--") {
 			t.Errorf("missing -- for nil success in:\n%s", output)
 		}
+
+		// Default table should NOT have PROBES column.
+		if strings.Contains(output, "PROBES\t") {
+			t.Errorf("default table should not have PROBES column:\n%s", output)
+		}
+	})
+
+	t.Run("wide output", func(t *testing.T) {
+		wideResults := []checks.CheckStatusResult{
+			{
+				ID:          1,
+				Job:         "http-check",
+				Target:      "https://example.com",
+				Type:        "http",
+				Success:     new(0.9972),
+				ProbesUp:    2,
+				ProbesTotal: 2,
+				ProbeNames:  []string{"Oregon", "Paris (offline)"},
+				Status:      "OK",
+			},
+		}
+
+		codec := &checks.StatusTableCodec{Wide: true}
+		var buf bytes.Buffer
+		err := codec.Encode(&buf, wideResults)
+		if err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+
+		output := buf.String()
+
+		// Wide table must have PROBES column.
+		if !strings.Contains(output, "PROBES") {
+			t.Errorf("wide table should have PROBES column:\n%s", output)
+		}
+		if !strings.Contains(output, "Oregon") {
+			t.Errorf("wide table should show probe name Oregon:\n%s", output)
+		}
+		if !strings.Contains(output, "Paris (offline)") {
+			t.Errorf("wide table should show Paris (offline):\n%s", output)
+		}
 	})
 }
 
@@ -262,11 +303,39 @@ func TestBuildCheckStatusResults(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "probe names populated from probe map",
+			checks: []checks.Check{
+				{ID: 4, Job: "check-4", Target: "https://probes.com", Probes: []int64{10, 20}, Settings: checks.CheckSettings{"http": map[string]any{}}},
+			},
+			successMap: map[string]float64{"check-4/https://probes.com": 0.9},
+			probeMap:   map[string]float64{"check-4/https://probes.com": 2},
+			wantLen:    1,
+			verify: func(t *testing.T, results []checks.CheckStatusResult) {
+				t.Helper()
+				r := results[0]
+				if len(r.ProbeNames) != 2 {
+					t.Errorf("expected 2 probe names, got %d: %v", len(r.ProbeNames), r.ProbeNames)
+					return
+				}
+				if r.ProbeNames[0] != "Oregon" {
+					t.Errorf("expected probe name Oregon, got %s", r.ProbeNames[0])
+				}
+				if r.ProbeNames[1] != "Paris (offline)" {
+					t.Errorf("expected probe name Paris (offline), got %s", r.ProbeNames[1])
+				}
+			},
+		},
+	}
+
+	probeNameMap := map[int64]string{
+		10: "Oregon",
+		20: "Paris (offline)",
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results := checks.BuildCheckStatusResults(tt.checks, tt.successMap, tt.probeMap)
+			results := checks.BuildCheckStatusResults(tt.checks, tt.successMap, tt.probeMap, probeNameMap)
 			if len(results) != tt.wantLen {
 				t.Fatalf("expected %d results, got %d", tt.wantLen, len(results))
 			}

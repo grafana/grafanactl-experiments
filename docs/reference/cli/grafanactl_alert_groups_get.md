@@ -1,0 +1,28 @@
+## grafanactl alert groups get
+
+Get a single alert rule group.
+
+```
+grafanactl alert groups get NAME [flags]
+```
+
+### Options
+
+```
+  -h, --help            help for get
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
+```
+
+### Options inherited from parent commands
+
+```
+      --config string    Path to the configuration file to use
+      --context string   Name of the context to use
+      --no-color         Disable color output
+  -v, --verbose count    Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+```
+
+### SEE ALSO
+
+* [grafanactl alert groups](grafanactl_alert_groups.md)	 - Manage alert rule groups.
+

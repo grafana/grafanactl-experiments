@@ -18,21 +18,16 @@ import (
 	"github.com/grafana/grafanactl/internal/agent"
 	"github.com/grafana/grafanactl/internal/logs"
 	"github.com/grafana/grafanactl/internal/providers"
-	_ "github.com/grafana/grafanactl/internal/providers/slo" // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/grafanactl/internal/providers/alert" // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/grafanactl/internal/providers/slo"   // Provider registrations — blank imports trigger init() self-registration.
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 )
 
-// allProviders returns all registered providers.
-// Providers self-register via init() in their packages (imported above as blank imports).
-func allProviders() []providers.Provider {
-	return providers.All()
-}
-
 // Command builds the root cobra command for the given version using the
 // compile-time registered provider list.
 func Command(version string) *cobra.Command {
-	return newCommand(version, allProviders())
+	return newCommand(version, providers.All())
 }
 
 // newCommand builds the root cobra command with an explicit provider list.

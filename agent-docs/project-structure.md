@@ -25,14 +25,19 @@ grafanactl/
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
 │   ├── logs/                 # slog + k8s klog integration, verbosity
-│   ├── providers/            # Provider plugin system (Prometheus, Loki providers)
+│   ├── linter/               # OPA/Rego-based resource linter engine
+│   │   ├── bundle/           # Embedded Rego bundle with built-in rules
+│   │   └── builtins/         # Built-in PromQL/LogQL validators
+│   ├── providers/            # Provider plugin system
+│   │   ├── configloader.go   # Shared ConfigLoader for all providers
+│   │   ├── alert/            # Alert provider (rules and groups)
+│   │   └── slo/              # SLO provider implementation
+│   │       ├── definitions/  # SLO definitions and status queries
+│   │       └── reports/      # SLO reports
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   └── loki/             # Loki HTTP client (log + metric queries)
 │   ├── secrets/              # Redaction of sensitive config fields
-│   ├── slo/                  # SLO provider implementation
-│   │   ├── definitions/      # SLO definitions and status queries
-│   │   └── reports/          # SLO reports
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
 │   │   ├── discovery/        # API discovery: registry, index, preferred versions
@@ -50,7 +55,8 @@ grafanactl/
 ├── scripts/                  # Standalone Go programs for code generation
 │   ├── cmd-reference/        # Generates CLI docs from Cobra tree
 │   ├── config-reference/     # Generates config YAML reference from Go structs
-│   └── env-vars-reference/   # Generates env-var docs from struct tags
+│   ├── env-vars-reference/   # Generates env-var docs from struct tags
+│   └── linter-rules-reference/  # Generates linter rule reference documentation
 │
 ├── docs/                     # Documentation source (checked in)
 │   ├── assets/               # Logo, custom CSS

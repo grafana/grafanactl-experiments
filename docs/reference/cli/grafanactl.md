@@ -12,6 +12,7 @@
 
 ### SEE ALSO
 
+* [grafanactl alert](grafanactl_alert.md)	 - Manage Grafana alerting resources.
 * [grafanactl config](grafanactl_config.md)	 - View or manipulate configuration settings
 * [grafanactl datasources](grafanactl_datasources.md)	 - Manage Grafana datasources
 * [grafanactl dev](grafanactl_dev.md)	 - Manage Grafana resources as code

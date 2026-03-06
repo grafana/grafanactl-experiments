@@ -94,11 +94,6 @@ func labelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			if opts.Label != "" {
 				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label)
 				if err != nil {
@@ -108,7 +103,8 @@ func labelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				if opts.IO.OutputFormat == "table" {
 					return prometheus.FormatLabelsTable(cmd.OutOrStdout(), resp)
 				}
-				return codec.Encode(cmd.OutOrStdout(), resp)
+
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.Labels(ctx, datasourceUID)
@@ -119,7 +115,8 @@ func labelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			if opts.IO.OutputFormat == "table" {
 				return prometheus.FormatLabelsTable(cmd.OutOrStdout(), resp)
 			}
-			return codec.Encode(cmd.OutOrStdout(), resp)
+
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -218,15 +215,11 @@ func metadataCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return fmt.Errorf("failed to get metadata: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			if opts.IO.OutputFormat == "table" {
 				return prometheus.FormatMetadataTable(cmd.OutOrStdout(), resp)
 			}
-			return codec.Encode(cmd.OutOrStdout(), resp)
+
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -339,15 +332,11 @@ func targetsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return fmt.Errorf("failed to get targets: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			if opts.IO.OutputFormat == "table" {
 				return prometheus.FormatTargetsTable(cmd.OutOrStdout(), resp)
 			}
-			return codec.Encode(cmd.OutOrStdout(), resp)
+
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 

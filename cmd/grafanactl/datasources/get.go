@@ -74,12 +74,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				JSONData:  ds.JSONData,
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), info)
+			return opts.IO.Encode(cmd.OutOrStdout(), info)
 		},
 	}
 

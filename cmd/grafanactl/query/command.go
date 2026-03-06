@@ -127,11 +127,6 @@ func Command() *cobra.Command {
 				return fmt.Errorf("invalid step: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			switch opts.Type {
 			case "prometheus":
 				client, err := prometheus.NewClient(cfg)
@@ -154,7 +149,8 @@ func Command() *cobra.Command {
 				if opts.IO.OutputFormat == "table" {
 					return prometheus.FormatTable(cmd.OutOrStdout(), resp)
 				}
-				return codec.Encode(cmd.OutOrStdout(), resp)
+
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "loki":
 				client, err := loki.NewClient(cfg)
@@ -178,7 +174,8 @@ func Command() *cobra.Command {
 				if opts.IO.OutputFormat == "table" {
 					return loki.FormatQueryTable(cmd.OutOrStdout(), resp)
 				}
-				return codec.Encode(cmd.OutOrStdout(), resp)
+
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 
 			default:
 				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki)", opts.Type)

@@ -132,12 +132,7 @@ grafana_slo_* metrics.`,
 			// Merge SLO data with metrics.
 			results := BuildStatusResults(slos, metrics)
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), results)
+			return opts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
 	opts.setup(cmd.Flags())

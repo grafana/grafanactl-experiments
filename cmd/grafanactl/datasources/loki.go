@@ -91,11 +91,6 @@ func lokiLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			if opts.Label != "" {
 				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label)
 				if err != nil {
@@ -105,7 +100,8 @@ func lokiLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				if opts.IO.OutputFormat == "table" {
 					return loki.FormatLabelsTable(cmd.OutOrStdout(), resp)
 				}
-				return codec.Encode(cmd.OutOrStdout(), resp)
+
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.Labels(ctx, datasourceUID)
@@ -116,7 +112,8 @@ func lokiLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			if opts.IO.OutputFormat == "table" {
 				return loki.FormatLabelsTable(cmd.OutOrStdout(), resp)
 			}
-			return codec.Encode(cmd.OutOrStdout(), resp)
+
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -223,15 +220,11 @@ func seriesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return fmt.Errorf("failed to get series: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			if opts.IO.OutputFormat == "table" {
 				return loki.FormatSeriesTable(cmd.OutOrStdout(), resp)
 			}
-			return codec.Encode(cmd.OutOrStdout(), resp)
+
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 

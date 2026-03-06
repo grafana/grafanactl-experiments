@@ -173,12 +173,7 @@ grafana_slo_sli_window metrics.`,
 				points = make(map[string][]definitions.SLOTimeSeriesPoint)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), ReportTimelinePayload{
+			return opts.IO.Encode(cmd.OutOrStdout(), ReportTimelinePayload{
 				Reports:  rpts,
 				SLOIndex: sloIndex,
 				Points:   points,

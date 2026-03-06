@@ -89,6 +89,7 @@ func (c *GroupsTableCodec) Encode(w io.Writer, v any) error {
 	fmt.Fprintln(tw, "NAME\tFOLDER\tRULES\tINTERVAL")
 
 	for _, g := range groups {
+		// Interval is in seconds per the Prometheus/Grafana ruler API contract.
 		fmt.Fprintf(tw, "%s\t%s\t%d\t%ds\n", g.Name, g.FolderUID, len(g.Rules), g.Interval)
 	}
 
@@ -265,9 +266,11 @@ func (c *GroupsStatusTableCodec) Encode(w io.Writer, v any) error {
 				firing++
 			case StatePending:
 				pending++
+			case StateInactive:
+				inactive++
 			default:
-				// The Grafana alerting API only returns firing/pending/inactive.
-				// Treat anything else as inactive.
+				// The Grafana alerting API only returns firing/pending/inactive,
+				// but count unexpected states as inactive defensively.
 				inactive++
 			}
 		}

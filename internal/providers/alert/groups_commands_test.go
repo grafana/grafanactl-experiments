@@ -111,7 +111,7 @@ func TestGroupsStatusTableCodec_Encode(t *testing.T) {
 	require.Len(t, lines, 3, "header + 2 groups")
 
 	// group-1: 5 rules total, 2 firing, 1 pending, 2 inactive.
-	assert.Contains(t, lines[1], "2") // firing count
+	assert.Regexp(t, `group-1\s+5\s+2\s+1\s+2`, lines[1])
 }
 
 func TestGroupsStatusTableCodec_InvalidType(t *testing.T) {

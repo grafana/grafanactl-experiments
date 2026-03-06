@@ -59,6 +59,13 @@ func newRulesListCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
+			if opts.State != "" {
+				validStates := map[string]bool{StateFiring: true, StatePending: true, StateInactive: true}
+				if !validStates[opts.State] {
+					return fmt.Errorf("invalid state %q: must be one of firing, pending, inactive", opts.State)
+				}
+			}
+
 			ctx := cmd.Context()
 			restCfg, err := loader.LoadRESTConfig(ctx)
 			if err != nil {

@@ -24,19 +24,15 @@ User needs grafanactl installed with configured context and appropriate permissi
 
 Check context if needed (`grafanactl config view`). If multiple contexts exist and none specified, ask which to use.
 
-Find the alert:
+### Step 2: Get Alert Details and Check for Early Exit
+
+Fetch the alert, by listing all alerts and filtering by name 
 ```bash
-grafanactl alert rules list -o json
+grafanactl alert rules list -o json | jq -r '.[] | .rules[]? | select(.name == "CertManagerCertExpirySoon")
 ```
 
 Filter by name, state, cluster/environment as relevant. If multiple matches, list them and ask which to investigate.
-
-### Step 2: Get Alert Details and Check for Early Exit
-
-Fetch the alert:
-```bash
-grafanactl alert rules get <uid> -o yaml
-```
+Inform the user which context you're using.
 
 Check the `type` field:
 - If `type: recording`: This is a recording rule, not an alerting rule. Report: "This is a recording rule (pre-calculates metrics), not an alerting rule. It doesn't fire alerts. Current state: [state]. Want details on what it's recording?" Stop here unless they ask for more.
@@ -47,14 +43,18 @@ Check the `state` field:
 
 ### Step 3: Full Investigation (Firing/Pending Alerts Only)
 
-Query the datasource with graph visualization:
+You should use the datasourceUID from the alert when you can.
+
+Query the datasource. Use -o json to get the data for yourself. Use with a graph visualization for showing a summary to the user:
 
 ```bash
 # Prometheus
+grafanactl query -d <datasource-uid> -e '<query>' --start now-1h --end now --step 1m -o json
 grafanactl query -d <datasource-uid> -e '<query>' --start now-1h --end now --step 1m -o graph
 
 # Loki
-grafanactl query -d <datasource-uid> -t loki -e '<query>' --start now-1h --end now -o graph
+grafanactl query -d <datasource-uid> -e '<query>' --start now-1h --end now -o json
+grafanactl query -d <datasource-uid> -e '<query>' --start now-1h --end now -o graph
 ```
 
 Analyze the results: What's the current value? Spike or gradual? When did it start?
@@ -62,7 +62,7 @@ Analyze the results: What's the current value? Spike or gradual? When did it sta
 ### Step 4: Surface Resources and Provide Analysis
 
 Extract from annotations:
-- Runbook URLs (fetch with `gh api` if in GitHub)
+- Runbook URLs (ALWAYS fetch with `gh api` if in GitHub)
 - Dashboard links
 - Descriptions
 
@@ -75,7 +75,9 @@ Provide concise analysis:
 
 Recommend incident creation if there's customer impact.
 
-List specific next actions - queries to run, deployments to check, metrics to examine.
+List specific next actions - queries to run, deployments to check, metrics to examine. If there are queries for logs or metrics you can run, then ask the user if they want you to run them. If infrastructure changes are a suspected cause, suggest to the user that you could investigate any infra-as-code repos, if they point you to them. 
+
+If the next suggested actions include looking at logs in any way, use grafanactl to do it.
 
 ## Output Format
 

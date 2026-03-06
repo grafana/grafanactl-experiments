@@ -43,19 +43,10 @@ func DetectedFromEnv() bool {
 }
 
 // SetFlag is called from the CLI layer after pre-parsing os.Args for the
-// --agent flag. Setting enabled=true always enables agent mode. Setting
-// enabled=false is a no-op when the environment already signalled agent
-// mode — environment detection takes priority over flag-off.
+// --agent flag. The flag is only set when the user explicitly passes
+// --agent or --agent=false, so it always takes precedence over env detection.
 func SetFlag(enabled bool) {
-	if enabled {
-		agentMode = true
-		return
-	}
-
-	// Only disable via flag when env didn't detect agent mode.
-	if !detectedFromEnv {
-		agentMode = false
-	}
+	agentMode = enabled
 }
 
 // detectFromEnv reads environment variables and sets the package-level state.

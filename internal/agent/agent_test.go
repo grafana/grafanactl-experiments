@@ -76,10 +76,10 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: true,
 		},
 		{
-			name:     "SetFlag(false) does not disable when env detected",
+			name:     "SetFlag(false) overrides env detection (explicit --agent=false)",
 			envVars:  map[string]string{"CLAUDE_CODE": "1"},
 			setFlag:  boolPtr(false),
-			wantMode: true,
+			wantMode: false,
 		},
 		{
 			name:     "case insensitive truthy: CLAUDE_CODE=TRUE",

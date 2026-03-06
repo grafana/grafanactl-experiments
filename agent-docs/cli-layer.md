@@ -7,6 +7,14 @@ grafanactl (root)
 ├── --no-color               [persistent flag]
 ├── --verbose / -v           [persistent flag, count]
 │
+├── api                      [cmd/grafanactl/api/command.go]
+│   ├── --config             [persistent: inherited from config.Options]
+│   ├── --context            [persistent: inherited from config.Options]
+│   ├── --method / -X        HTTP method (default: GET, or POST if -d is set)
+│   ├── --data / -d          Request body (@file, @-, or literal). Implies POST.
+│   ├── --header / -H        Custom headers (repeatable)
+│   └── --output / -o        json|yaml  [default: json]
+│
 ├── config                   [cmd/grafanactl/config/command.go]
 │   ├── --config             [persistent: path to config file]
 │   ├── --context            [persistent: context override]

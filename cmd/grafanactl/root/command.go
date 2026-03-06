@@ -8,6 +8,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-logr/logr"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"github.com/grafana/grafanactl/cmd/grafanactl/api"
 	"github.com/grafana/grafanactl/cmd/grafanactl/config"
 	"github.com/grafana/grafanactl/cmd/grafanactl/datasources"
 	"github.com/grafana/grafanactl/cmd/grafanactl/dev"
@@ -15,6 +16,7 @@ import (
 	cmdproviders "github.com/grafana/grafanactl/cmd/grafanactl/providers"
 	"github.com/grafana/grafanactl/cmd/grafanactl/query"
 	"github.com/grafana/grafanactl/cmd/grafanactl/resources"
+	"github.com/grafana/grafanactl/internal/agent"
 	"github.com/grafana/grafanactl/internal/logs"
 	"github.com/grafana/grafanactl/internal/providers"
 	_ "github.com/grafana/grafanactl/internal/providers/alert" // Provider registrations — blank imports trigger init() self-registration.
@@ -34,6 +36,7 @@ func Command(version string) *cobra.Command {
 // Nil entries in pp are silently skipped.
 func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	noColors := false
+	agentFlag := false
 	verbosity := 0
 
 	rootCmd := &cobra.Command{
@@ -42,7 +45,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-			if noColors {
+			if noColors || agent.IsAgentMode() {
 				color.NoColor = true // globally disables colorized output
 			}
 
@@ -74,6 +77,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.SetErr(os.Stderr)
 	rootCmd.SetIn(os.Stdin)
 
+	rootCmd.AddCommand(api.Command())
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(dev.Command())
 	rootCmd.AddCommand(datasources.Command())
@@ -90,6 +94,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&noColors, "no-color", noColors, "Disable color output")
+	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 
 	return rootCmd

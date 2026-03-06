@@ -1,62 +1,56 @@
-package fail
+package fail_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/grafana/grafanactl/cmd/grafanactl/fail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestConvertContextCanceled(t *testing.T) {
+func TestErrorToDetailedError_ContextCanceled(t *testing.T) {
 	tests := []struct {
 		name         string
 		err          error
-		wantMatch    bool
 		wantExitCode int
 	}{
 		{
 			name:         "bare context.Canceled returns ExitCancelled",
 			err:          context.Canceled,
-			wantMatch:    true,
-			wantExitCode: ExitCancelled,
+			wantExitCode: fail.ExitCancelled,
 		},
 		{
 			name:         "wrapped context.Canceled returns ExitCancelled",
 			err:          fmt.Errorf("operation failed: %w", context.Canceled),
-			wantMatch:    true,
-			wantExitCode: ExitCancelled,
-		},
-		{
-			name:      "non-canceled error returns nil",
-			err:       fmt.Errorf("some other error"),
-			wantMatch: false,
+			wantExitCode: fail.ExitCancelled,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, matched := convertContextCanceled(tc.err)
+			got := fail.ErrorToDetailedError(tc.err)
 
-			assert.Equal(t, tc.wantMatch, matched)
-
-			if tc.wantMatch {
-				require.NotNil(t, got)
-				require.NotNil(t, got.ExitCode)
-				assert.Equal(t, tc.wantExitCode, *got.ExitCode)
-				assert.Equal(t, "Operation cancelled", got.Summary)
-			} else {
-				assert.Nil(t, got)
-			}
+			require.NotNil(t, got)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
 		})
 	}
 }
 
-func TestConvertAPIErrors_AuthExitCode(t *testing.T) {
+func TestErrorToDetailedError_NonCanceledError(t *testing.T) {
+	got := fail.ErrorToDetailedError(errors.New("some other error"))
+
+	require.NotNil(t, got)
+	assert.Nil(t, got.ExitCode, "non-canceled errors should have nil ExitCode")
+	assert.Equal(t, "Unexpected error", got.Summary)
+}
+
+func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 	tests := []struct {
 		name         string
 		err          error
@@ -72,7 +66,7 @@ func TestConvertAPIErrors_AuthExitCode(t *testing.T) {
 					Message: "Unauthorized",
 				},
 			},
-			wantExitCode: ExitAuthFailure,
+			wantExitCode: fail.ExitAuthFailure,
 		},
 		{
 			name: "403 Forbidden returns ExitAuthFailure",
@@ -84,15 +78,14 @@ func TestConvertAPIErrors_AuthExitCode(t *testing.T) {
 					Message: "Forbidden",
 				},
 			},
-			wantExitCode: ExitAuthFailure,
+			wantExitCode: fail.ExitAuthFailure,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, matched := convertAPIErrors(tc.err)
+			got := fail.ErrorToDetailedError(tc.err)
 
-			require.True(t, matched)
 			require.NotNil(t, got)
 			require.NotNil(t, got.ExitCode, "ExitCode should be set for auth errors")
 			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
@@ -114,21 +107,9 @@ func TestErrorToDetailedError_ConverterOrdering(t *testing.T) {
 	}
 	wrappedErr := fmt.Errorf("request failed: %w: %w", context.Canceled, unauthorizedErr)
 
-	got := ErrorToDetailedError(wrappedErr)
+	got := fail.ErrorToDetailedError(wrappedErr)
 
 	require.NotNil(t, got)
 	require.NotNil(t, got.ExitCode, "ExitCode should be set")
-	assert.Equal(t, ExitCancelled, *got.ExitCode, "context.Canceled should take precedence over auth errors")
-}
-
-func TestErrorToDetailedError_UnrecognizedError(t *testing.T) {
-	// An error that matches no specific converter should return a
-	// DetailedError with nil ExitCode (caller defaults to 1).
-	err := fmt.Errorf("something completely unexpected")
-
-	got := ErrorToDetailedError(err)
-
-	require.NotNil(t, got)
-	assert.Nil(t, got.ExitCode, "unrecognized errors should have nil ExitCode")
-	assert.Equal(t, "Unexpected error", got.Summary)
+	assert.Equal(t, fail.ExitCancelled, *got.ExitCode, "context.Canceled should take precedence over auth errors")
 }

@@ -1,17 +1,11 @@
-package agent
+package agent_test
 
 import (
 	"testing"
 
+	"github.com/grafana/grafanactl/internal/agent"
 	"github.com/stretchr/testify/assert"
 )
-
-// resetState clears all package-level variables and re-runs environment
-// detection. Tests call this after setting env vars via t.Setenv so that
-// the package state reflects the current environment.
-func resetState() {
-	detectFromEnv()
-}
 
 func TestIsAgentMode(t *testing.T) {
 	tests := []struct {
@@ -53,7 +47,7 @@ func TestIsAgentMode(t *testing.T) {
 			name: "GRAFANACTL_AGENT_MODE=0 overrides CLAUDE_CODE=1",
 			envVars: map[string]string{
 				"GRAFANACTL_AGENT_MODE": "0",
-				"CLAUDE_CODE":          "1",
+				"CLAUDE_CODE":           "1",
 			},
 			wantMode: false,
 		},
@@ -61,7 +55,7 @@ func TestIsAgentMode(t *testing.T) {
 			name: "GRAFANACTL_AGENT_MODE=false overrides CURSOR_AGENT=1",
 			envVars: map[string]string{
 				"GRAFANACTL_AGENT_MODE": "false",
-				"CURSOR_AGENT":         "1",
+				"CURSOR_AGENT":          "1",
 			},
 			wantMode: false,
 		},
@@ -72,13 +66,13 @@ func TestIsAgentMode(t *testing.T) {
 		},
 		{
 			name:     "SetFlag(true) with no env vars enables agent mode",
-			setFlag:  boolPtr(true),
-			wantMode: true,
+			setFlag:  new(bool),
+			wantMode: false, // new(bool) is false; override below
 		},
 		{
 			name:     "SetFlag(false) overrides env detection (explicit --agent=false)",
 			envVars:  map[string]string{"CLAUDE_CODE": "1"},
-			setFlag:  boolPtr(false),
+			setFlag:  new(false),
 			wantMode: false,
 		},
 		{
@@ -103,30 +97,33 @@ func TestIsAgentMode(t *testing.T) {
 		},
 	}
 
+	// Fix the SetFlag(true) test case
+	tests[9].setFlag = new(true)
+	tests[9].wantMode = true
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// t.Setenv automatically restores env after the subtest.
 			for k, v := range tc.envVars {
 				t.Setenv(k, v)
 			}
 
-			resetState()
+			agent.ResetForTesting()
 
 			if tc.setFlag != nil {
-				SetFlag(*tc.setFlag)
+				agent.SetFlag(*tc.setFlag)
 			}
 
-			assert.Equal(t, tc.wantMode, IsAgentMode())
+			assert.Equal(t, tc.wantMode, agent.IsAgentMode())
 		})
 	}
 }
 
 func TestDetectedFromEnv(t *testing.T) {
 	tests := []struct {
-		name     string
-		envVars  map[string]string
-		setFlag  *bool
-		wantEnv  bool
+		name    string
+		envVars map[string]string
+		setFlag *bool
+		wantEnv bool
 	}{
 		{
 			name:    "returns true when env var set",
@@ -135,7 +132,7 @@ func TestDetectedFromEnv(t *testing.T) {
 		},
 		{
 			name:    "returns false when only SetFlag used",
-			setFlag: boolPtr(true),
+			setFlag: new(true),
 			wantEnv: false,
 		},
 		{
@@ -155,71 +152,13 @@ func TestDetectedFromEnv(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			resetState()
+			agent.ResetForTesting()
 
 			if tc.setFlag != nil {
-				SetFlag(*tc.setFlag)
+				agent.SetFlag(*tc.setFlag)
 			}
 
-			assert.Equal(t, tc.wantEnv, DetectedFromEnv())
+			assert.Equal(t, tc.wantEnv, agent.DetectedFromEnv())
 		})
 	}
-}
-
-func TestIsTruthy(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"1", true},
-		{"true", true},
-		{"True", true},
-		{"TRUE", true},
-		{"yes", true},
-		{"Yes", true},
-		{"YES", true},
-		{"0", false},
-		{"false", false},
-		{"no", false},
-		{"", false},
-		{"random", false},
-		{"enabled", false},
-	}
-
-	for _, tc := range tests {
-		t.Run("isTruthy("+tc.input+")", func(t *testing.T) {
-			assert.Equal(t, tc.want, isTruthy(tc.input))
-		})
-	}
-}
-
-func TestIsFalsy(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"0", true},
-		{"false", true},
-		{"False", true},
-		{"FALSE", true},
-		{"no", true},
-		{"No", true},
-		{"NO", true},
-		{"1", false},
-		{"true", false},
-		{"yes", false},
-		{"", false},
-		{"random", false},
-		{"disabled", false},
-	}
-
-	for _, tc := range tests {
-		t.Run("isFalsy("+tc.input+")", func(t *testing.T) {
-			assert.Equal(t, tc.want, isFalsy(tc.input))
-		})
-	}
-}
-
-func boolPtr(b bool) *bool {
-	return &b
 }

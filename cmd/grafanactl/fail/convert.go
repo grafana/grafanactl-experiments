@@ -120,7 +120,7 @@ func convertAPIErrors(err error) (*DetailedError, bool) {
 				"Make sure that the configured credentials are correct",
 				"Make sure that the configured credentials have enough permissions",
 			},
-			ExitCode: intPtr(ExitAuthFailure),
+			ExitCode: new(ExitAuthFailure),
 		}, true
 	case k8sapi.IsNotFound(statusErr):
 		return &DetailedError{
@@ -206,7 +206,7 @@ func convertContextCanceled(err error) (*DetailedError, bool) {
 		return &DetailedError{
 			Summary:  "Operation cancelled",
 			Parent:   err,
-			ExitCode: intPtr(ExitCancelled),
+			ExitCode: new(ExitCancelled),
 		}, true
 	}
 

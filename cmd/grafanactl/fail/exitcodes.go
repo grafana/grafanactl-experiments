@@ -16,7 +16,3 @@ const (
 	ExitCancelled           = 5 // User cancelled (SIGINT) or context.Canceled
 	ExitVersionIncompatible = 6 // Grafana version < 12 [PLANNED]
 )
-
-func intPtr(v int) *int {
-	return &v
-}

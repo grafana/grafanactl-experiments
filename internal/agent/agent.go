@@ -20,12 +20,18 @@ var agentEnvVars = []string{ //nolint:gochecknoglobals
 	"AMAZON_Q",
 }
 
-var ( //nolint:gochecknoglobals
-	agentMode       bool
-	detectedFromEnv bool
+var (
+	agentMode       bool //nolint:gochecknoglobals
+	detectedFromEnv bool //nolint:gochecknoglobals
 )
 
-func init() {
+func init() { //nolint:gochecknoinits
+	detectFromEnv()
+}
+
+// ResetForTesting re-runs environment detection from current env vars.
+// Exported for use in tests only.
+func ResetForTesting() {
 	detectFromEnv()
 }
 

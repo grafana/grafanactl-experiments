@@ -214,7 +214,7 @@ func Command() *cobra.Command {
 				if opts.IO.OutputFormat == "table" {
 					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 				}
-				return codec.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 
 			default:
 				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope)", opts.Type)

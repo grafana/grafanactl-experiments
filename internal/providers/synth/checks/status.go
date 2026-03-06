@@ -14,6 +14,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/grafana-app-sdk/logging"
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/config"
@@ -111,30 +113,69 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 
 			ctx := cmd.Context()
 
-			// Load SM config and list/get checks.
+			// Load SM config — needed by all parallel branches below.
 			baseURL, token, _, err := loader.LoadSMConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			client := NewClient(baseURL, token)
+			smClient := NewClient(baseURL, token)
 
-			var checks []Check
+			// Parse optional check ID arg before launching goroutines.
+			var filterID int64
 			if len(args) == 1 {
-				id, err := strconv.ParseInt(args[0], 10, 64)
+				filterID, err = strconv.ParseInt(args[0], 10, 64)
 				if err != nil {
 					return fmt.Errorf("invalid check ID %q: must be a number", args[0])
 				}
-				c, err := client.Get(ctx, id)
-				if err != nil {
+			}
+
+			// Fan-out: fetch checks, probes, datasource UID, and REST config in parallel.
+			var (
+				checks      []Check
+				probeNameMap = map[int64]string{}
+				dsUID        string
+				restCfg      config.NamespacedRESTConfig
+			)
+
+			initG, initCtx := errgroup.WithContext(ctx)
+
+			initG.Go(func() error {
+				if filterID != 0 {
+					c, err := smClient.Get(initCtx, filterID)
+					if err != nil {
+						return err
+					}
+					checks = []Check{*c}
+				} else {
+					checks, err = smClient.List(initCtx)
 					return err
 				}
-				checks = []Check{*c}
-			} else {
-				checks, err = client.List(ctx)
-				if err != nil {
-					return err
+				return nil
+			})
+
+			initG.Go(func() error {
+				probeList, err := probes.NewClient(baseURL, token).List(initCtx)
+				if err == nil {
+					probeNameMap = buildProbeNameMap(probeList)
 				}
+				return nil // best-effort
+			})
+
+			initG.Go(func() error {
+				var err error
+				dsUID, err = resolveDataSourceUID(initCtx, opts.DatasourceUID, loader)
+				return err
+			})
+
+			initG.Go(func() error {
+				var err error
+				restCfg, err = loader.LoadRESTConfig(initCtx)
+				return err
+			})
+
+			if err := initG.Wait(); err != nil {
+				return err
 			}
 
 			if len(checks) == 0 {
@@ -142,49 +183,37 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				return nil
 			}
 
-			// Fetch probes for wide output (probe ID → display name).
-			probeNameMap := map[int64]string{}
-			if probeList, err := probes.NewClient(baseURL, token).List(ctx); err == nil {
-				probeNameMap = buildProbeNameMap(probeList)
-			}
-
-			// Resolve datasource UID.
-			dsUID, err := resolveDataSourceUID(ctx, opts.DatasourceUID, loader)
-			if err != nil {
-				return err
-			}
-
-			// Load REST config and create Prometheus client.
-			restCfg, err := loader.LoadRESTConfig(ctx)
-			if err != nil {
-				return err
-			}
-
 			promClient, err := prometheus.NewClient(restCfg)
 			if err != nil {
 				return err
 			}
 
-			// Query metrics for each check.
-			successMap := make(map[string]float64)
-			probeCountMap := make(map[string]float64)
+			// Two aggregate queries — one HTTP call each, covering all checks at once.
+			successQ, err := BuildAllSuccessRateQuery()
+			if err != nil {
+				return err
+			}
+			probeCountQ, err := BuildAllProbeCountQuery()
+			if err != nil {
+				return err
+			}
 
-			for _, c := range checks {
-				key := c.Job + "/" + c.Target
+			var (
+				successMap   map[string]float64
+				probeCountMap map[string]float64
+			)
 
-				// Success rate query.
-				if q, err := BuildSuccessRateQuery(c.Job, c.Target); err == nil {
-					if val := queryInstant(ctx, promClient, dsUID, q); val != nil {
-						successMap[key] = *val
-					}
-				}
-
-				// Probe count query.
-				if q, err := BuildProbeCountQuery(c.Job, c.Target); err == nil {
-					if val := queryInstant(ctx, promClient, dsUID, q); val != nil {
-						probeCountMap[key] = *val
-					}
-				}
+			promG, promCtx := errgroup.WithContext(ctx)
+			promG.Go(func() error {
+				successMap = queryInstantByJobInstance(promCtx, promClient, dsUID, successQ)
+				return nil
+			})
+			promG.Go(func() error {
+				probeCountMap = queryInstantByJobInstance(promCtx, promClient, dsUID, probeCountQ)
+				return nil
+			})
+			if err := promG.Wait(); err != nil {
+				return err
 			}
 
 			results := BuildCheckStatusResults(checks, successMap, probeCountMap, probeNameMap)
@@ -373,6 +402,31 @@ func BuildProbeCountQuery(job, instance string) (string, error) {
 	return expr.String(), nil
 }
 
+// BuildAllSuccessRateQuery builds a PromQL query for the success rate of all checks.
+// The result is keyed by (job, instance) labels and covers all checks in one HTTP call.
+func BuildAllSuccessRateQuery() (string, error) {
+	expr, err := promql.Avg(
+		promql.AvgOverTime(
+			promql.Vector("probe_success").Range("5m"),
+		),
+	).By([]string{"job", "instance"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// BuildAllProbeCountQuery builds a PromQL query counting probes per check across all checks.
+func BuildAllProbeCountQuery() (string, error) {
+	expr, err := promql.Count(
+		promql.Vector("probe_success"),
+	).By([]string{"job", "instance"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
 // BuildTimelineQuery builds a PromQL query for raw probe_success values.
 func BuildTimelineQuery(job, instance string) (string, error) {
 	expr, err := promql.Vector("probe_success").
@@ -400,6 +454,27 @@ func queryInstant(ctx context.Context, client *prometheus.Client, dsUID, query s
 		return nil
 	}
 	return parseSampleValue(resp.Data.Result[0])
+}
+
+// queryInstantByJobInstance executes a multi-series instant query and returns a map
+// keyed by "job/instance" containing the scalar value for each series.
+func queryInstantByJobInstance(ctx context.Context, client *prometheus.Client, dsUID, query string) map[string]float64 {
+	resp, err := client.Query(ctx, dsUID, prometheus.QueryRequest{Query: query})
+	if err != nil || resp.Status != "success" {
+		return nil
+	}
+	result := make(map[string]float64, len(resp.Data.Result))
+	for _, sample := range resp.Data.Result {
+		job := sample.Metric["job"]
+		instance := sample.Metric["instance"]
+		if job == "" || instance == "" {
+			continue
+		}
+		if val := parseSampleValue(sample); val != nil {
+			result[job+"/"+instance] = *val
+		}
+	}
+	return result
 }
 
 // parseSampleValue extracts the float64 value from an instant query sample.

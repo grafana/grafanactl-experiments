@@ -155,7 +155,7 @@ func doRequest(ctx context.Context, cfg config.NamespacedRESTConfig, method, pat
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if body != nil {
+	if body != http.NoBody {
 		req.Header.Set("Content-Type", "application/json")
 	}
 

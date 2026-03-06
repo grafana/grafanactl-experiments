@@ -9,6 +9,7 @@ import (
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
+	"github.com/grafana/grafanactl/internal/grafana"
 	"github.com/grafana/grafanactl/internal/query/loki"
 	"github.com/grafana/grafanactl/internal/query/prometheus"
 	"github.com/grafana/grafanactl/internal/query/pyroscope"
@@ -21,8 +22,8 @@ type queryOpts struct {
 	Datasource  string
 	Type        string
 	Query       string
-	Start       string
-	End         string
+	From        string
+	To          string
 	Step        string
 	ProfileType string // Pyroscope-specific
 	MaxNodes    int64  // Pyroscope-specific
@@ -37,8 +38,8 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-{type}-datasource is configured)")
 	flags.StringVarP(&opts.Type, "type", "t", "prometheus", "Datasource type (prometheus, loki, pyroscope)")
 	flags.StringVarP(&opts.Query, "expr", "e", "", "Query expression (PromQL for prometheus, LogQL for loki, label selector for pyroscope)")
-	flags.StringVar(&opts.Start, "start", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
-	flags.StringVar(&opts.End, "end", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	flags.StringVar(&opts.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	flags.Int64Var(&opts.MaxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
@@ -77,16 +78,16 @@ func Command() *cobra.Command {
 	grafanactl query -d <datasource-uid> -e 'up{job="grafana"}'
 
 	# Prometheus range query
-	grafanactl query -d <datasource-uid> -e 'rate(http_requests_total[5m])' --start now-1h --end now --step 1m
+	grafanactl query -d <datasource-uid> -e 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
 	# Loki log query (instant)
-	grafanactl query -d <loki-uid> -t loki -e '{job="varlogs"}'
+	grafanactl query -d <loki-uid> -e '{job="varlogs"}'
 
 	# Loki log query (range)
-	grafanactl query -d <loki-uid> -t loki -e '{name="private-datasource-connect"}' --start now-1h --end now
+	grafanactl query -d <loki-uid> -e '{name="private-datasource-connect"}' --from now-1h --to now
 
 	# Loki metric query (log rate)
-	grafanactl query -d <loki-uid> -t loki -e 'sum(rate({job="varlogs"}[5m]))' --start now-1h --end now --step 1m
+	grafanactl query -d <loki-uid> -e 'sum(rate({job="varlogs"}[5m]))' --from now-1h --to now --step 1m
 
 	# Pyroscope profile query (requires --profile-type)
 	grafanactl query -d <pyroscope-uid> -t pyroscope -e '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --start now-1h --end now
@@ -106,35 +107,49 @@ func Command() *cobra.Command {
 				return err
 			}
 
-			// Resolve datasource
+			// Resolve datasource UID
+			fullCfg, err := configOpts.LoadConfig(ctx)
+			if err != nil {
+				return err
+			}
 			datasourceUID := opts.Datasource
 			if datasourceUID == "" {
-				fullCfg, err := configOpts.LoadConfig(ctx)
-				if err != nil {
-					return err
-				}
-				switch opts.Type {
-				case "loki":
-					datasourceUID = fullCfg.GetCurrentContext().DefaultLokiDatasource
-				case "pyroscope":
-					datasourceUID = fullCfg.GetCurrentContext().DefaultPyroscopeDatasource
+				curCtx := fullCfg.GetCurrentContext()
+				promDefault := curCtx.DefaultPrometheusDatasource
+				lokiDefault := curCtx.DefaultLokiDatasource
+
+				switch {
+				case promDefault != "" && lokiDefault != "":
+					return errors.New("both default-prometheus-datasource and default-loki-datasource are configured; use -d to specify which datasource to query")
+				case promDefault != "":
+					datasourceUID = promDefault
+				case lokiDefault != "":
+					datasourceUID = lokiDefault
 				default:
-					datasourceUID = fullCfg.GetCurrentContext().DefaultPrometheusDatasource
+					return errors.New("datasource UID is required: use -d flag or configure default-prometheus-datasource or default-loki-datasource")
 				}
 			}
-			if datasourceUID == "" {
-				return fmt.Errorf("datasource UID is required: use -d flag or set default-%s-datasource in config", opts.Type)
+
+			// Fetch datasource to determine type
+			gClient, err := grafana.ClientFromContext(fullCfg.GetCurrentContext())
+			if err != nil {
+				return fmt.Errorf("failed to create Grafana client: %w", err)
 			}
+			dsResp, err := gClient.Datasources.GetDataSourceByUID(datasourceUID)
+			if err != nil {
+				return fmt.Errorf("failed to get datasource %q: %w", datasourceUID, err)
+			}
+			dsType := dsResp.Payload.Type
 
 			now := time.Now()
-			start, err := ParseTime(opts.Start, now)
+			start, err := ParseTime(opts.From, now)
 			if err != nil {
-				return fmt.Errorf("invalid start time: %w", err)
+				return fmt.Errorf("invalid --from time: %w", err)
 			}
 
-			end, err := ParseTime(opts.End, now)
+			end, err := ParseTime(opts.To, now)
 			if err != nil {
-				return fmt.Errorf("invalid end time: %w", err)
+				return fmt.Errorf("invalid --to time: %w", err)
 			}
 
 			step, err := ParseDuration(opts.Step)
@@ -142,7 +157,7 @@ func Command() *cobra.Command {
 				return fmt.Errorf("invalid step: %w", err)
 			}
 
-			switch opts.Type {
+			switch dsType {
 			case "prometheus":
 				client, err := prometheus.NewClient(cfg)
 				if err != nil {

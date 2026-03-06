@@ -1,7 +1,7 @@
 ---
 type: feature-spec
 title: "Stage 1: MVP plugin"
-status: approved
+status: done
 research: docs/research/2026-03-06-claude-code-plugin-for-grafanactl.md
 parent: grafanactl-experiments-v27
 beads_id: grafanactl-experiments-v28

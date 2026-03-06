@@ -151,10 +151,17 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 
 		output := buf.String()
 
-		// Verify header columns.
-		for _, col := range []string{"ID", "JOB", "TARGET", "TYPE", "SUCCESS", "PROBES_UP", "PROBES_TOTAL", "STATUS"} {
+		// Verify header columns present in default table.
+		for _, col := range []string{"ID", "JOB", "TARGET", "SUCCESS", "STATUS"} {
 			if !strings.Contains(output, col) {
 				t.Errorf("missing header column %q in:\n%s", col, output)
+			}
+		}
+
+		// Verify wide-only columns are absent from default table.
+		for _, col := range []string{"TYPE", "PROBES_UP", "PROBES_TOTAL", "PROBES"} {
+			if strings.Contains(output, col) {
+				t.Errorf("default table should not have column %q:\n%s", col, output)
 			}
 		}
 
@@ -178,10 +185,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 			t.Errorf("missing -- for nil success in:\n%s", output)
 		}
 
-		// Default table should NOT have PROBES column.
-		if strings.Contains(output, "PROBES\t") {
-			t.Errorf("default table should not have PROBES column:\n%s", output)
-		}
+
 	})
 
 	t.Run("wide output", func(t *testing.T) {

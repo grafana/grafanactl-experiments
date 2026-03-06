@@ -762,7 +762,7 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 	if c.Wide {
 		fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tPROBES\tSTATUS")
 	} else {
-		fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tSTATUS")
+		fmt.Fprintln(tw, "ID\tJOB\tTARGET\tSUCCESS\tSTATUS")
 	}
 
 	for _, r := range results {
@@ -776,8 +776,8 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
 				r.ID, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, probesStr, r.Status)
 		} else {
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n",
-				r.ID, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, r.Status)
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n",
+				r.ID, r.Job, r.Target, successStr, r.Status)
 		}
 	}
 

@@ -26,9 +26,9 @@ Check context if needed (`grafanactl config view`). If multiple contexts exist a
 
 ### Step 2: Get Alert Details and Check for Early Exit
 
-Fetch the alert, by listing all alerts and filtering by name
+Fetch the alert by listing all alerts and filtering by name. Replace `<AlertName>` with the actual alert name:
 ```bash
-grafanactl alert rules list -o json | jq -r '.[] | .rules[]? | select(.name == "CertManagerCertExpirySoon")'
+grafanactl alert rules list -o json | jq -r '.[] | .rules[]? | select(.name == "<AlertName>")'
 ```
 
 Filter by name, state, cluster/environment as relevant. If multiple matches, list them and ask which to investigate.
@@ -131,3 +131,8 @@ Use minimal formatting. Avoid excessive bold text. No timelines like "within 24 
 - Check labels and annotations for environment/context
 - Follow runbooks when available
 - Err toward recommending incident creation when customer impact is unclear
+
+## Reference
+
+For alert JSON structure, query patterns by alert type, graph interpretation, and runbook fetching, see:
+- [`references/alert-investigation-patterns.md`](references/alert-investigation-patterns.md)

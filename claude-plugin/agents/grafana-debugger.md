@@ -8,7 +8,7 @@ description: |
   <example>Latency has spiked on the checkout service, investigate with Prometheus</example>
   <example>Find the root cause of this alert using Grafana metrics and logs</example>
   <example>Our error rate is elevated, use Grafana to identify which service is affected</example>
-color: orange
+color: yellow
 tools:
   - Bash
   - Read

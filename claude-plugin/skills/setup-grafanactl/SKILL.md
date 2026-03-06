@@ -410,4 +410,4 @@ grafanactl resources get dashboards -o json
 
 For a complete listing of all config set paths, environment variables,
 namespace resolution logic, and multi-context patterns, see
-`${CLAUDE_PLUGIN_ROOT}/skills/setup-grafanactl/references/configuration.md`.
+`references/configuration.md`.

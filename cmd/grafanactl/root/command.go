@@ -27,7 +27,6 @@ import (
 func allProviders() []providers.Provider {
 	return append(
 		providers.All(),
-		&sloprovider.SLOProvider{},
 		&alert.AlertProvider{},
 	)
 }

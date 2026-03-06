@@ -47,6 +47,7 @@ type listOpts struct {
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &checkTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -80,7 +81,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			if codec.Format() == "table" {
+			if codec.Format() == "table" || codec.Format() == "wide" {
 				return codec.Encode(cmd.OutOrStdout(), checkList)
 			}
 
@@ -130,6 +131,32 @@ func (c *checkTableCodec) Decode(r io.Reader, v any) error {
 	return errors.New("table format does not support decoding")
 }
 
+type checkWideTableCodec struct{}
+
+func (c *checkWideTableCodec) Format() format.Format { return "wide" }
+
+func (c *checkWideTableCodec) Encode(w io.Writer, v any) error {
+	checkList, ok := v.([]Check)
+	if !ok {
+		return errors.New("invalid data type for wide codec: expected []Check")
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tENABLED\tFREQ\tTIMEOUT\tPROBES")
+
+	for _, c := range checkList {
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%v\t%ds\t%ds\t%d\n",
+			c.ID, c.Job, c.Target, c.Settings.CheckType(), c.Enabled,
+			c.Frequency/1000, c.Timeout/1000, len(c.Probes))
+	}
+
+	return tw.Flush()
+}
+
+func (c *checkWideTableCodec) Decode(r io.Reader, v any) error {
+	return errors.New("wide format does not support decoding")
+}
+
 // ---------------------------------------------------------------------------
 // get
 // ---------------------------------------------------------------------------
@@ -139,7 +166,9 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
+	o.IO.RegisterCustomCodec("table", &checkTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
+	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
@@ -173,6 +202,15 @@ func newGetCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
+			codec, err := opts.IO.Codec()
+			if err != nil {
+				return err
+			}
+
+			if codec.Format() == "table" || codec.Format() == "wide" {
+				return codec.Encode(cmd.OutOrStdout(), []Check{*c})
+			}
+
 			probeRefs, err := client.ListProbes(ctx)
 			if err != nil {
 				return fmt.Errorf("listing probes: %w", err)
@@ -182,11 +220,6 @@ func newGetCommand(loader smcfg.Loader) *cobra.Command {
 			res, err := ToResource(*c, namespace, names)
 			if err != nil {
 				return fmt.Errorf("converting check: %w", err)
-			}
-
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
 			}
 
 			obj := res.ToUnstructured()

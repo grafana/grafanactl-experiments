@@ -33,7 +33,7 @@ grafanactl query [flags]
 	grafanactl query -d <loki-uid> -e 'sum(rate({job="varlogs"}[5m]))' --from now-1h --to now --step 1m
 
 	# Pyroscope profile query (requires --profile-type)
-	grafanactl query -d <pyroscope-uid> -t pyroscope -e '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --start now-1h --end now
+	grafanactl query -d <pyroscope-uid> -e '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now
 
 	# Output as JSON
 	grafanactl query -d <datasource-uid> -e 'up' -o json
@@ -56,7 +56,6 @@ grafanactl query [flags]
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
-  -t, --type string           Datasource type (prometheus, loki, pyroscope) (default "prometheus")
 ```
 
 ### Options inherited from parent commands

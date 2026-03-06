@@ -20,7 +20,6 @@ import (
 type queryOpts struct {
 	IO          cmdio.Options
 	Datasource  string
-	Type        string
 	Query       string
 	From        string
 	To          string
@@ -37,7 +36,6 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-{type}-datasource is configured)")
-	flags.StringVarP(&opts.Type, "type", "t", "prometheus", "Datasource type (prometheus, loki, pyroscope)")
 	flags.StringVarP(&opts.Query, "expr", "e", "", "Query expression (PromQL for prometheus, LogQL for loki, label selector for pyroscope)")
 	flags.StringVar(&opts.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
@@ -53,10 +51,6 @@ func (opts *queryOpts) Validate() error {
 
 	if opts.Query == "" {
 		return errors.New("query expression is required (use -e or --expr)")
-	}
-
-	if opts.Type == "pyroscope" && opts.ProfileType == "" {
-		return errors.New("profile type is required for pyroscope queries (use --profile-type)")
 	}
 
 	return nil
@@ -91,7 +85,7 @@ func Command() *cobra.Command {
 	grafanactl query -d <loki-uid> -e 'sum(rate({job="varlogs"}[5m]))' --from now-1h --to now --step 1m
 
 	# Pyroscope profile query (requires --profile-type)
-	grafanactl query -d <pyroscope-uid> -t pyroscope -e '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --start now-1h --end now
+	grafanactl query -d <pyroscope-uid> -e '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now
 
 	# Output as JSON
 	grafanactl query -d <datasource-uid> -e 'up' -o json
@@ -215,6 +209,10 @@ func Command() *cobra.Command {
 				}
 
 			case "pyroscope":
+				if opts.ProfileType == "" {
+					return errors.New("profile type is required for pyroscope queries (use --profile-type)")
+				}
+
 				client, err := pyroscope.NewClient(cfg)
 				if err != nil {
 					return fmt.Errorf("failed to create client: %w", err)
@@ -239,7 +237,7 @@ func Command() *cobra.Command {
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope)", opts.Type)
+				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope)", dsType)
 			}
 		},
 	}

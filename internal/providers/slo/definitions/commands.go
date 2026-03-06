@@ -85,16 +85,11 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			// Table codec operates on raw []Slo for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
-			if codec.Format() == "table" {
-				return codec.Encode(cmd.OutOrStdout(), slos)
+			if opts.IO.OutputFormat == "table" {
+				return opts.IO.Encode(cmd.OutOrStdout(), slos)
 			}
 
 			var objs []unstructured.Unstructured
@@ -105,7 +100,8 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
-			return codec.Encode(cmd.OutOrStdout(), objs)
+
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -196,13 +192,8 @@ func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to convert SLO to resource: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			obj := res.ToUnstructured()
-			return codec.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())

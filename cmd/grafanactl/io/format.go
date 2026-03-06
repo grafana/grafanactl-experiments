@@ -2,6 +2,7 @@ package io
 
 import (
 	"fmt"
+	"io"
 	"maps"
 	"slices"
 	"sort"
@@ -59,6 +60,15 @@ func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn
 	}
 
 	return codec, nil
+}
+
+func (opts *Options) Encode(dst io.Writer, value any) error {
+	codec, err := opts.Codec()
+	if err != nil {
+		return err
+	}
+
+	return codec.Encode(dst, value)
 }
 
 // We have to return an interface here.

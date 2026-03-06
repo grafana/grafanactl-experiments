@@ -31,6 +31,7 @@ type queryOpts struct {
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.RegisterCustomCodec("table", &queryTableCodec{})
+	opts.IO.RegisterCustomCodec("wide", &queryWideCodec{})
 	opts.IO.RegisterCustomCodec("graph", &queryGraphCodec{})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
@@ -201,11 +202,14 @@ func Command() *cobra.Command {
 					return fmt.Errorf("query failed: %w", err)
 				}
 
-				if opts.IO.OutputFormat == "table" {
+				switch opts.IO.OutputFormat {
+				case "table":
 					return loki.FormatQueryTable(cmd.OutOrStdout(), resp)
+				case "wide":
+					return loki.FormatQueryTableWide(cmd.OutOrStdout(), resp)
+				default:
+					return opts.IO.Encode(cmd.OutOrStdout(), resp)
 				}
-
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "pyroscope":
 				client, err := pyroscope.NewClient(cfg)
@@ -264,4 +268,25 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 
 func (c *queryTableCodec) Decode(io.Reader, any) error {
 	return errors.New("query table codec does not support decoding")
+}
+
+type queryWideCodec struct{}
+
+func (c *queryWideCodec) Format() format.Format {
+	return "wide"
+}
+
+func (c *queryWideCodec) Encode(w io.Writer, data any) error {
+	switch resp := data.(type) {
+	case *prometheus.QueryResponse:
+		return prometheus.FormatTable(w, resp)
+	case *loki.QueryResponse:
+		return loki.FormatQueryTableWide(w, resp)
+	default:
+		return errors.New("invalid data type for query wide codec")
+	}
+}
+
+func (c *queryWideCodec) Decode(io.Reader, any) error {
+	return errors.New("query wide codec does not support decoding")
 }

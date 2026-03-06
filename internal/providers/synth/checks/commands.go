@@ -119,11 +119,11 @@ func (c *checkTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tENABLED")
+	fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE")
 
 	for _, c := range checkList {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%v\n",
-			c.ID, c.Job, c.Target, c.Settings.CheckType(), c.Enabled)
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n",
+			c.ID, c.Job, c.Target, c.Settings.CheckType())
 	}
 
 	return tw.Flush()

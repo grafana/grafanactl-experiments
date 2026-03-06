@@ -29,6 +29,10 @@ func (opts *apiOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("json")
 	opts.IO.BindFlags(flags)
 
+	if f := flags.Lookup("output"); f != nil {
+		f.Usage = "Output format for JSON responses. One of: json, yaml"
+	}
+
 	flags.StringVarP(&opts.Method, "method", "X", "", "HTTP method (default: GET, or POST if -d is set)")
 	flags.StringVarP(&opts.Data, "data", "d", "", "Request body (use @file for file, @- for stdin). Implies POST.")
 	flags.StringArrayVarP(&opts.Headers, "header", "H", nil, "Custom headers (repeatable)")
@@ -40,7 +44,7 @@ func (opts *apiOpts) Validate() error {
 	}
 	if opts.Method != "" {
 		method := strings.ToUpper(opts.Method)
-		valid := map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true, "HEAD": true}
+		valid := map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true, "HEAD": true, "OPTIONS": true, "TRACE": true}
 		if !valid[method] {
 			return fmt.Errorf("invalid method %q", opts.Method)
 		}
@@ -177,6 +181,9 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 	}
 
 	if resp.StatusCode >= 400 {
+		if len(respBody) == 0 {
+			return fmt.Errorf("HTTP %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+		}
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 

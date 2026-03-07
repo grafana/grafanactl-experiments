@@ -1,0 +1,223 @@
+# Alert Investigation Patterns
+
+Reference for investigating Grafana alerts with grafanactl. Covers the alert
+JSON structure, common investigation query patterns, and graph interpretation.
+
+---
+
+## Alert JSON Structure
+
+`grafanactl alert rules list -o json` returns an array of alert groups. Each
+group contains an array of rules:
+
+```json
+[
+  {
+    "name": "MyAlertGroup",
+    "file": "grafana",
+    "rules": [
+      {
+        "state": "firing",
+        "name": "HighErrorRate",
+        "query": "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m]) > 0.05",
+        "duration": 300,
+        "labels": {
+          "severity": "critical",
+          "cluster": "us-east-1"
+        },
+        "annotations": {
+          "summary": "High error rate detected on {{ $labels.job }}",
+          "description": "Error rate is {{ $value | humanizePercentage }}",
+          "runbook_url": "https://github.com/myorg/runbooks/blob/main/alerts/HighErrorRate.md",
+          "dashboard_url": "https://grafana.example.com/d/abc123"
+        },
+        "alerts": [
+          {
+            "labels": {
+              "alertname": "HighErrorRate",
+              "job": "api-server",
+              "namespace": "production"
+            },
+            "annotations": { ... },
+            "state": "firing",
+            "activeAt": "2024-01-15T10:23:45Z",
+            "value": "0.08"
+          }
+        ],
+        "type": "alerting",
+        "datasourceUID": "prometheus-uid-abc123"
+      }
+    ]
+  }
+]
+```
+
+### Key Fields
+
+| Field | Description |
+|-------|-------------|
+| `state` | `firing`, `pending`, `inactive` |
+| `type` | `alerting` (fires alerts) or `recording` (pre-calculates metrics) |
+| `query` | The PromQL or LogQL expression that drives the alert |
+| `datasourceUID` | UID of the datasource to query for investigation |
+| `labels` | Rule-level labels (severity, team, cluster) |
+| `annotations.runbook_url` | Link to runbook; fetch with `gh api` for GitHub URLs |
+| `annotations.dashboard_url` | Link to related Grafana dashboard |
+| `alerts[]` | Currently firing alert instances with their label sets and current values |
+| `alerts[].activeAt` | When this instance began firing |
+| `alerts[].value` | The numeric value that triggered the alert |
+
+### Extracting the Alert Query
+
+```bash
+# Get the query for a specific alert
+grafanactl alert rules list -o json | \
+  jq -r '.[] | .rules[] | select(.name == "<AlertName>") | .query'
+
+# Get the datasource UID for a specific alert
+grafanactl alert rules list -o json | \
+  jq -r '.[] | .rules[] | select(.name == "<AlertName>") | .datasourceUID'
+
+# Get all currently firing instances with their label sets
+grafanactl alert rules list -o json | \
+  jq '.[] | .rules[] | select(.name == "<AlertName>") | .alerts[] | select(.state == "firing")'
+```
+
+---
+
+## Common Investigation Query Patterns
+
+### Latency Alerts
+
+For P99/P95 latency alerts:
+
+```bash
+# Current latency percentiles
+grafanactl query -d <uid> -e 'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))' \
+  --start now-1h --end now --step 1m -o graph
+
+# Latency by endpoint
+grafanactl query -d <uid> -e 'histogram_quantile(0.99, sum by(job, handler) (rate(http_request_duration_seconds_bucket[5m])))' \
+  --start now-1h --end now --step 1m -o json
+```
+
+### Error Rate Alerts
+
+For alerts on HTTP 5xx or error rates:
+
+```bash
+# Overall error rate
+grafanactl query -d <uid> -e 'rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])' \
+  --start now-1h --end now --step 1m -o graph
+
+# Error rate by service
+grafanactl query -d <uid> -e 'sum by(job) (rate(http_requests_total{status=~"5.."}[5m])) / sum by(job) (rate(http_requests_total[5m]))' \
+  --start now-1h --end now --step 1m -o json
+```
+
+### Resource Exhaustion Alerts
+
+For CPU, memory, or disk alerts:
+
+```bash
+# CPU usage by pod
+grafanactl query -d <uid> -e 'sum by(pod) (rate(container_cpu_usage_seconds_total[5m]))' \
+  --start now-1h --end now --step 1m -o graph
+
+# Memory usage
+grafanactl query -d <uid> -e 'container_memory_working_set_bytes{container!=""}' \
+  --start now-30m --end now --step 1m -o json
+
+# Disk free percentage
+grafanactl query -d <uid> -e 'node_filesystem_avail_bytes / node_filesystem_size_bytes' \
+  --start now-6h --end now --step 5m -o graph
+```
+
+### Certificate / TLS Alerts
+
+For cert expiry alerts:
+
+```bash
+# Days until certificate expiry
+grafanactl query -d <uid> -e '(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400' \
+  --start now-1h --end now --step 10m -o json
+```
+
+### Availability / SLO Alerts
+
+For availability or SLO breach alerts:
+
+```bash
+# Uptime over last hour
+grafanactl query -d <uid> -e 'avg_over_time(up[1h])' \
+  --start now-6h --end now --step 5m -o graph
+
+# Current up/down status
+grafanactl query -d <uid> -e 'up == 0' \
+  --start now-15m --end now --step 1m -o json
+```
+
+---
+
+## Loki Log Investigation Patterns
+
+After identifying an issue from metrics, correlate with logs:
+
+```bash
+# Find error logs for a service
+grafanactl query -d <loki-uid> -e '{job="api-server"} |= "error"' \
+  --start now-1h --end now -o json
+
+# Find logs around the time the alert started firing (replace timestamp)
+grafanactl query -d <loki-uid> -e '{namespace="production"} |= "error"' \
+  --start 2024-01-15T10:00:00Z --end 2024-01-15T10:30:00Z -o json
+
+# Rate of error log lines (for trend analysis)
+grafanactl query -d <loki-uid> -e 'rate({job="api-server"} |= "error" [5m])' \
+  --start now-2h --end now --step 1m -o graph
+```
+
+---
+
+## Interpreting Graph Output
+
+`-o graph` renders an ASCII time-series chart in the terminal. Key patterns:
+
+| Visual Pattern | Likely Cause |
+|----------------|--------------|
+| Sudden vertical spike | Deployment, config change, or external event |
+| Gradual rising trend | Resource accumulation (memory leak, disk fill) |
+| Flat high value | Persistent overload or misconfiguration |
+| Periodic spikes | Cron job, scheduled task, or traffic surge |
+| Drop to zero then spike | Process restart or deployment rollout |
+| Sawtooth pattern | Crash-loop or auto-scaling oscillation |
+
+Use `-o json` after `-o graph` to extract exact values:
+```bash
+# Get the peak value during the alert window
+grafanactl query -d <uid> -e '<query>' --start now-2h --end now --step 1m -o json | \
+  jq '[.data[].values[] | .value] | max'
+```
+
+---
+
+## Runbook Fetching
+
+If the alert annotation contains a GitHub runbook URL, fetch it with:
+
+```bash
+gh api /repos/<owner>/<repo>/contents/<path> --jq '.content' | base64 -d
+```
+
+For non-GitHub URLs, use `curl`:
+
+```bash
+curl -s "<runbook_url>"
+```
+
+---
+
+## See Also
+
+- [Grafana Alert Rules documentation](https://grafana.com/docs/grafana/latest/alerting/)
+- The `setup-grafanactl` skill for configuring grafanactl if not yet set up

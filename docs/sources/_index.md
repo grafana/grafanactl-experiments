@@ -59,10 +59,10 @@ It's also integrated with Grafana Assistant, combining the previously fragmented
 
 ## Get started
 
-{{< /admonition >}}
+{{< admonition type="note" >}}
 
 Refer to the [`gcx` repository](https://github.com/grafana/gcx) in GitHub for the complete set of `gcx` documents, including architecture information, user guides, and other reference material.
 
-{{< admonition type="note" >}}
+{{< /admonition >}}
 
 {{< card-grid key="cards" type="simple" >}}
